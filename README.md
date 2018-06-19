@@ -18,3 +18,7 @@ Add following code in your truffle test cases:
 import { injectInTruffle } from "/Users/jdkanani/matic/sol-trace";
 injectInTruffle(web3, artifacts);
 ```
+
+### Demo
+
+![](https://pbs.twimg.com/media/Df1eA7vWkAEg509.jpg)
