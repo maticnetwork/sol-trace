@@ -1,0 +1,56 @@
+{
+  "name": "sol-trace",
+  "version": "0.0.1-beta.1",
+  "description": "Trace runtime failures for solidity",
+  "main": "build/index.js",
+  "directories": {
+    "build": "./build"
+  },
+  "scripts": {
+    "clean": "rm -rf lib",
+    "build": "npm run lint && npm run clean && babel src/ --out-dir build/",
+    "lint": "eslint src/**/*.js test/**/*.spec.js",
+    "test": "mocha --require babel-core/register --require babel-polyfill --colors ./test/**/*.spec.js",
+    "test:watch": "mocha --require babel-core/register --require babel-polyfill --colors -w ./test/**/*.spec.js",
+    "prepublish": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maticnetwork/sol-trace.git"
+  },
+  "keywords": [
+    "ethereum",
+    "solidity"
+  ],
+  "author": "Jaynti Kanani <jdkanani@gmail.com>",
+  "license": "GPLv3",
+  "bugs": {
+    "url": "https://github.com/maticnetwork/sol-trace/issues"
+  },
+  "homepage": "https://github.com/maticnetwork/sol-trace#readme",
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-core": "^6.26.3",
+    "babel-eslint": "^8.2.3",
+    "babel-loader": "^7.1.4",
+    "babel-plugin-add-module-exports": "^0.2.1",
+    "babel-plugin-transform-object-rest-spread": "^6.26.0",
+    "babel-plugin-transform-runtime": "^6.23.0",
+    "babel-polyfill": "^6.26.0",
+    "babel-preset-env": "^1.7.0",
+    "chai": "^4.1.2",
+    "eslint": "^4.19.1",
+    "eslint-config-standard": "^11.0.0",
+    "eslint-loader": "^2.0.0",
+    "eslint-plugin-import": "^2.12.0",
+    "eslint-plugin-node": "^6.0.1",
+    "eslint-plugin-promise": "^3.8.0",
+    "eslint-plugin-react": "^7.9.1",
+    "eslint-plugin-standard": "^3.1.0",
+    "mocha": "^5.2.0"
+  },
+  "dependencies": {
+    "ethereumjs-util": "^5.2.0",
+    "glob": "^7.1.2"
+  }
+}
