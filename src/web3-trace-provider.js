@@ -177,7 +177,7 @@ export default class Web3TraceProvider {
       return `\n\nStack trace for REVERT:\n${traceArray.reverse().join('\n')}\n`
     }
 
-    return 'Could not determine stack trace for REVERT'
+    return '\n\nCould not determine stack trace for REVERT\n'
   }
 
   collectContractsData() {
