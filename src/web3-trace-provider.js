@@ -234,6 +234,13 @@ export default class Web3TraceProvider {
       const runtimeBytecodeRegex = this.bytecodeToBytecodeRegex(
         contractDataCandidate.runtimeBytecode
       )
+      
+      if (
+        contractDataCandidate.bytecode.length === 2 ||
+        contractDataCandidate.runtimeBytecode.length == 2
+      ) {
+        return false;
+      }
 
       // We use that function to find by bytecode or runtimeBytecode. Those are quasi-random strings so
       // collisions are practically impossible and it allows us to reuse that code
