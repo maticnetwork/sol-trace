@@ -1,13 +1,15 @@
-# sol-trace
+# sol-trace-set
 
 Trace runtime failures for solidity
+
+This is a forked version of https://github.com/maticnetwork/sol-trace
 
 Inspired by 0x-monorepo https://github.com/0xProject/0x-monorepo/pull/705
 
 ### Installation
 
 ```
-$ npm install --save sol-trace # or yarn add sol-trace
+$ npm install --save sol-trace-set # or yarn add sol-trace-set
 ```
 
 ### Usage
@@ -15,7 +17,7 @@ $ npm install --save sol-trace # or yarn add sol-trace
 Add following code in your truffle test cases:
 
 ```js
-import { injectInTruffle } from "/Users/jdkanani/matic/sol-trace";
+import { injectInTruffle } from "sol-trace-set";
 injectInTruffle(web3, artifacts);
 ```
 

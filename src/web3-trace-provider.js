@@ -187,6 +187,12 @@ export default class Web3TraceProvider {
     let sources = []
     artifactFileNames.forEach(artifactFileName => {
       const artifact = JSON.parse(fs.readFileSync(artifactFileName).toString())
+
+      // If the sourcePath starts with zeppelin, then prepend with the pwd and node_modules
+      if (new RegExp('^zeppelin-solidity').test(artifact.sourcePath)) {
+        artifact.sourcePath = process.env.PWD + '/node_modules/' + artifact.sourcePath
+      }
+
       sources.push({
         artifactFileName,
         id: artifact.ast.id,
@@ -234,12 +240,12 @@ export default class Web3TraceProvider {
       const runtimeBytecodeRegex = this.bytecodeToBytecodeRegex(
         contractDataCandidate.runtimeBytecode
       )
-      
+
       if (
         contractDataCandidate.bytecode.length === 2 ||
-        contractDataCandidate.runtimeBytecode.length == 2
+        contractDataCandidate.runtimeBytecode.length === 2
       ) {
-        return false;
+        return false
       }
 
       // We use that function to find by bytecode or runtimeBytecode. Those are quasi-random strings so
