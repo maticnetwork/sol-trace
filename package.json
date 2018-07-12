@@ -1,6 +1,6 @@
 {
   "name": "sol-trace-set",
-  "version": "0.0.1-beta.1",
+  "version": "0.0.1",
   "description": "Trace runtime failures for solidity",
   "main": "build/index.js",
   "directories": {
