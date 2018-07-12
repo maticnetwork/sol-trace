@@ -1,13 +1,15 @@
-# sol-trace
+# sol-trace-set
 
 Trace runtime failures for solidity
+
+This is a forked version of https://github.com/maticnetwork/sol-trace
 
 Inspired by 0x-monorepo https://github.com/0xProject/0x-monorepo/pull/705
 
 ### Installation
 
 ```
-$ npm install --save sol-trace # or yarn add sol-trace
+$ npm install --save sol-trace-set # or yarn add sol-trace-set
 ```
 
 ### Usage
