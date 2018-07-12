@@ -15,7 +15,7 @@ $ npm install --save sol-trace # or yarn add sol-trace
 Add following code in your truffle test cases:
 
 ```js
-import { injectInTruffle } from "/Users/jdkanani/matic/sol-trace";
+import { injectInTruffle } from "sol-trace";
 injectInTruffle(web3, artifacts);
 ```
 
