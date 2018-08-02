@@ -14,7 +14,7 @@ describe('SourceMaps', () => {
         bytecodeHex,
         contractsData.sources
       )
-      assert.equal(pcToSourceRange[419].fileName, '/contracts/DecimalCheck.sol')
+      assert.equal(pcToSourceRange[419].fileName, '/contracts/SumToLength.sol')
     })
   })
 })
