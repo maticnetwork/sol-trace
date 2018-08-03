@@ -154,5 +154,29 @@ describe('Web3TraceProvider', () => {
         assert.fail(e)
       }
     })
+    it('eth_call old ver response.', async() => {
+      const callPayload = Object.assign(payload, {method: 'eth_call'})
+      try {
+        const oldVerResponse = {
+          id: 43,
+          jsonrpc: '2.0',
+          error: {
+            message: 'VM Exception while processing transaction: revert',
+            code: -32000,
+            data: {
+              stack: 'c: VM Exception while processing transaction: revert\n    at Function.c.fromResults ... cli.node.js:25:392',
+              name: 'c'
+            }
+          }
+        }
+        await targetProvider(debugTraceErrorMock(oldVerResponse)).sendAsync(callPayload, (err, res) => {
+          if (err) throwInPromise(err)
+        })
+        assert.equal(1, callCounter)
+        assert.equal('eth_call', lastPayload.method)
+      } catch (e) {
+        assert.fail(e)
+      }
+    })
   })
 })

@@ -32,21 +32,26 @@ export default class Web3TraceProvider {
           result.error.message.endsWith(': revert')
         ) {
           const txHash = result.result || Object.keys(result.error.data)[0]
-          const toAddress =
-            !txData.to || txData.to === '0x0'
-              ? constants.NEW_CONTRACT
-              : txData.to
+          if (utils.toBuffer(txHash).length === 32) {
+            const toAddress =
+              !txData.to || txData.to === '0x0'
+                ? constants.NEW_CONTRACT
+                : txData.to
 
-          // record tx trace
-          this.recordTxTrace(toAddress, txData.data, txHash, result)
-            .then(traceResult => {
-              result.error.message += traceResult
-              cb(err, result)
-            })
-            .catch(traceError => {
-              cb(traceError, result)
-            })
+            // record tx trace
+            this.recordTxTrace(toAddress, txData.data, txHash, result)
+              .then(traceResult => {
+                result.error.message += traceResult
+                cb(err, result)
+              })
+              .catch(traceError => {
+                cb(traceError, result)
+              })
+          } else {
+            cb(err, result)
+          }
         } else {
+          console.warn('Could not trace REVERT. maybe legacy node.')
           cb(err, result)
         }
       })
