@@ -2,8 +2,8 @@ import glob from 'glob'
 import fs from 'fs'
 import utils from 'ethereumjs-util'
 
-import { constants, getRevertTrace } from './trace'
-import { parseSourceMap } from './source-maps'
+import {constants, getRevertTrace} from './trace'
+import {parseSourceMap} from './source-maps'
 
 export default class Web3TraceProvider {
   constructor(web3) {
@@ -23,7 +23,7 @@ export default class Web3TraceProvider {
   }
 
   sendAsync(payload, cb) {
-    if (payload.method === 'eth_sendTransaction') {
+    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call') {
       const txData = payload.params[0]
       return this.nextProvider.sendAsync(payload, (err, result) => {
         if (
@@ -31,7 +31,7 @@ export default class Web3TraceProvider {
           result.error.message &&
           result.error.message.endsWith(': revert')
         ) {
-          const txHash = result.result
+          const txHash = result.result || Object.keys(result.error.data)[0]
           const toAddress =
             !txData.to || txData.to === '0x0'
               ? constants.NEW_CONTRACT
