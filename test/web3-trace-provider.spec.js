@@ -2,7 +2,11 @@ import Web3TraceProvider from '../src/web3-trace-provider'
 import MockProvider from './mock-provider'
 
 const assert = require('assert')
-
+const throwInPromise = (error) => {
+  setTimeout(() => {
+    throw error
+  }, 0)
+}
 describe('Web3TraceProvider', () => {
   describe('eth_call', () => {
     const payload = {
@@ -27,7 +31,7 @@ describe('Web3TraceProvider', () => {
         data: {
           '0x4edb02794d2e5d5c4c8c71bd033990158f5839bb9ab2e6f09c241aec16a0c008': {
             error: 'revert',
-            'program_counter': 810,
+            program_counter: 810,
             return: '0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000e6e756d20697320746f6f20626967000000000000000000000000000000000000'
           },
           stack: 'c: VM Exception while processing transaction: revert\n    at Function.c.fromResults ... cli.node.js:25:392',
@@ -53,8 +57,9 @@ describe('Web3TraceProvider', () => {
         }
       }
     }
+
     let callCounter, lastPayload
-    const mock = new MockProvider((counter, payload, cb) => {
+    const mockCallback = (counter, payload, cb) => {
       callCounter += 1
       lastPayload = payload
       if (payload.method === 'eth_sendTransaction') {
@@ -62,15 +67,33 @@ describe('Web3TraceProvider', () => {
       } else if (payload.method === 'eth_call') {
         cb(null, revertResponseForCall)
       }
-    })
-    const web3 = {currentProvider: mock}
-    const target = new Web3TraceProvider(web3)
+    }
+    const target = (mcb = mockCallback) => {
+      const mock = new MockProvider(mcb)
+      const web3 = {
+        currentProvider: mock,
+        eth: {
+          getCode: (address) => {
+            const payload = {
+              jsonrpc: '2.0',
+              id: 42,
+              method: 'eth_getCode',
+              params: [address, 'latest']
+            }
+            return new Promise((resolve, reject) => {
+              mock.sendAsync(payload, (err, res) => err ? reject(err) : resolve(res))
+            })
+          }
+        }
+      }
+      return new Web3TraceProvider(web3)
+    }
     beforeEach(() => {
       callCounter = 0
       lastPayload = ''
     })
     it('call debug_traceTransaction if trigger by eth_sendTransaction.', async() => {
-      await target.sendAsync(payload, (err, res) => {
+      await target().sendAsync(payload, (err, res) => {
         if (err) {
           assert.fail()
         }
@@ -81,7 +104,7 @@ describe('Web3TraceProvider', () => {
     })
     it('call debug_traceTransaction if trigger by eth_call.', async() => {
       const callPayload = Object.assign(payload, {method: 'eth_call'})
-      await target.sendAsync(callPayload, (err, res) => {
+      await target().sendAsync(callPayload, (err, res) => {
         if (err) {
           assert.fail()
         }
@@ -89,6 +112,44 @@ describe('Web3TraceProvider', () => {
       assert.equal(2, callCounter)
       assert.equal('debug_traceTransaction', lastPayload.method)
       assert.equal('0x4edb02794d2e5d5c4c8c71bd033990158f5839bb9ab2e6f09c241aec16a0c008', lastPayload.params[0])
+    })
+    it('when debug_traceTransaction retrun error.', async() => {
+      // process.on('unhandledRejection', console.dir)
+      const callPayload = Object.assign(payload, {method: 'eth_call'})
+      const traceErrorResponse = {
+        error: {
+          message: 'Unknown transaction 0x834f1e4f70dfe8fdb6cfaacbc8a4a80768946510e33ddc6b47ef09bea0c2eec8',
+          code: -32000,
+          data: {
+            stack: 'Error: Unknown transaction 0x834f1e4f70dfe8fdb6cfaacbc8a4a80768946510e33ddc6b47ef09bea0c2eec8\n ... at FSReqWrap.readFileAfterOpen [as oncomplete] (fs.js:421:13)',
+            name: 'Error'
+          }
+        }
+      }
+
+      try {
+        (await target((counter, payload, cb) => {
+          callCounter += 1
+          lastPayload = payload
+          if (payload.method === 'eth_sendTransaction') {
+            return cb(null, revertResponseForSendTransaction)
+          } else if (payload.method === 'eth_call') {
+            return cb(null, revertResponseForCall)
+          } else if (payload.method === 'debug_traceTransaction') {
+            return cb(null, traceErrorResponse)
+          } else if (payload.method === 'eth_getCode') {
+            return cb(null, '0x1234')
+          }
+        }).sendAsync(callPayload, (err, res) => {
+          if (err) {
+            throwInPromise(err)
+          }
+        }))
+        assert.equal(3, callCounter)
+        assert.equal('eth_getCode', lastPayload.method)
+      } catch (e) {
+        assert.fail(e)
+      }
     })
   })
 })
