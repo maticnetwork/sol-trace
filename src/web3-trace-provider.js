@@ -2,8 +2,8 @@ import glob from 'glob'
 import fs from 'fs'
 import utils from 'ethereumjs-util'
 
-import { constants, getRevertTrace } from './trace'
-import { parseSourceMap } from './source-maps'
+import {constants, getRevertTrace} from './trace'
+import {parseSourceMap} from './source-maps'
 
 export default class Web3TraceProvider {
   constructor(web3) {
@@ -23,7 +23,7 @@ export default class Web3TraceProvider {
   }
 
   sendAsync(payload, cb) {
-    if (payload.method === 'eth_sendTransaction') {
+    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call') {
       const txData = payload.params[0]
       return this.nextProvider.sendAsync(payload, (err, result) => {
         if (
@@ -31,22 +31,27 @@ export default class Web3TraceProvider {
           result.error.message &&
           result.error.message.endsWith(': revert')
         ) {
-          const txHash = result.result
-          const toAddress =
-            !txData.to || txData.to === '0x0'
-              ? constants.NEW_CONTRACT
-              : txData.to
+          const txHash = result.result || Object.keys(result.error.data)[0]
+          if (utils.toBuffer(txHash).length === 32) {
+            const toAddress =
+              !txData.to || txData.to === '0x0'
+                ? constants.NEW_CONTRACT
+                : txData.to
 
-          // record tx trace
-          this.recordTxTrace(toAddress, txData.data, txHash)
-            .then(traceResult => {
-              result.error.message += traceResult
-              cb(err, result)
-            })
-            .catch(traceError => {
-              cb(traceError, result)
-            })
+            // record tx trace
+            this.recordTxTrace(toAddress, txData.data, txHash, result)
+              .then(traceResult => {
+                result.error.message += traceResult
+                cb(err, result)
+              })
+              .catch(traceError => {
+                cb(traceError, result)
+              })
+          } else {
+            cb(err, result)
+          }
         } else {
+          console.warn('Could not trace REVERT. maybe legacy node.')
           cb(err, result)
         }
       })
@@ -88,21 +93,72 @@ export default class Web3TraceProvider {
     })
   }
 
-  async recordTxTrace(address, data, txHash) {
+  async recordTxTrace(address, data, txHash, result) {
     const trace = await this.getTransactionTrace(txHash, {
       disableMemory: true,
       disableStack: false,
       disableStorage: true
     })
 
-    const evmCallStack = getRevertTrace(trace.structLogs, address)
+    const logs = (trace === undefined) ? [] : trace.structLogs
+    const evmCallStack = getRevertTrace(logs, address)
     if (evmCallStack.length > 0) {
       // if getRevertTrace returns a call stack it means there was a
       // revert.
       return this.getStackTrace(evmCallStack)
+    } else {
+      return this.getStackTranceSimple(address, txHash, result)
+    }
+  }
+
+  async getStackTranceSimple(address, txHash, result) {
+    if (!this._contractsData) {
+      this._contractsData = this.collectContractsData()
+    }
+    const bytecode = await this.getContractCode(address)
+    const contractData = this.getContractDataIfExists(
+      this._contractsData.contractsData,
+      bytecode
+    )
+    if (!contractData) {
+      console.warn(`eth_call to an unknown address: ${address}`)
+      return null
     }
 
-    return null
+    const bytecodeHex = utils.stripHexPrefix(bytecode)
+    const sourceMap = contractData.sourceMapRuntime
+    const pcToSourceRange = parseSourceMap(
+      this._contractsData.sourceCodes,
+      sourceMap,
+      bytecodeHex,
+      this._contractsData.sources
+    )
+
+    let sourceRange
+    let pc = result.error.data[txHash].program_counter
+    // Sometimes there is not a mapping for this pc (e.g. if the revert
+    // actually happens in assembly).
+    while (!sourceRange) {
+      sourceRange = pcToSourceRange[pc]
+      pc -= 1
+      if (pc <= 0) {
+        console.warn(
+          `could not find matching sourceRange for structLog: ${result.error.data}`
+        )
+        return null
+      }
+    }
+
+    if (sourceRange) {
+      const traceArray = [
+        sourceRange.fileName,
+        sourceRange.location.start.line,
+        sourceRange.location.start.column
+      ].join(':')
+      return `\n\nStack trace for REVERT:\n${traceArray}\n`
+    }
+
+    return '\n\nCould not determine stack trace for REVERT\n'
   }
 
   async getStackTrace(evmCallStack) {
@@ -156,9 +212,7 @@ export default class Web3TraceProvider {
         pc -= 1
         if (pc <= 0) {
           console.warn(
-            `could not find matching sourceRange for structLog: ${
-              evmCallStackEntry.structLog
-            }`
+            `could not find matching sourceRange for structLog: ${evmCallStackEntry.structLog}`
           )
           continue
         }
@@ -182,7 +236,7 @@ export default class Web3TraceProvider {
 
   collectContractsData() {
     const artifactsGlob = 'build/contracts/**/*.json'
-    const artifactFileNames = glob.sync(artifactsGlob, { absolute: true })
+    const artifactFileNames = glob.sync(artifactsGlob, {absolute: true})
     const contractsData = []
     let sources = []
     artifactFileNames.forEach(artifactFileName => {
@@ -234,12 +288,11 @@ export default class Web3TraceProvider {
       const runtimeBytecodeRegex = this.bytecodeToBytecodeRegex(
         contractDataCandidate.runtimeBytecode
       )
-      
       if (
         contractDataCandidate.bytecode.length === 2 ||
-        contractDataCandidate.runtimeBytecode.length == 2
+        contractDataCandidate.runtimeBytecode.length === 2
       ) {
-        return false;
+        return false
       }
 
       // We use that function to find by bytecode or runtimeBytecode. Those are quasi-random strings so
@@ -257,7 +310,7 @@ export default class Web3TraceProvider {
 
   bytecodeToBytecodeRegex(bytecode) {
     const bytecodeRegex = bytecode
-      // Library linking placeholder: __ConvertLib____________________________
+    // Library linking placeholder: __ConvertLib____________________________
       .replace(/_.*_/, '.*')
       // Last 86 characters is solidity compiler metadata that's different between compilations
       .replace(/.{86}$/, '')
