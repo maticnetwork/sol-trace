@@ -33,6 +33,12 @@ const revertResponseForSendTransaction = {
     }
   }
 }
+
+const successResponseForSendTransaction = {
+  id: 43,
+  jsonrpc: '2.0',
+  result: '0x25e2028b4459864af2f7bfeccfa387ff2d9922b2da840687a9ae7233fa2c72ba'
+}
 const payload = {
   jsonrpc: '2.0',
   id: 43,
@@ -88,6 +94,7 @@ const getCodeMock = (mock) => {
 export {
   revertResponseForCall,
   revertResponseForSendTransaction,
+  successResponseForSendTransaction,
   payload,
   traceErrorResponse,
   oldVerResponse,

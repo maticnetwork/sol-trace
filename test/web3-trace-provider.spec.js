@@ -6,9 +6,11 @@ import {
   payload,
   revertResponseForCall,
   revertResponseForSendTransaction,
+  successResponseForSendTransaction,
   traceErrorResponse
 } from './jsonrpc_datas'
 
+global.sinon = require('sinon')
 const assert = require('assert')
 const throwInPromise = (error) => {
   setTimeout(() => {
@@ -26,23 +28,45 @@ describe('Web3TraceProvider', () => {
     }
     return new Web3TraceProvider(web3)
   }
-  let callCounter, lastPayload
+  let callCounter, lastPayload, spy
   beforeEach(() => {
     callCounter = 0
     lastPayload = ''
+    spy = global.sinon.spy(console, 'warn')
+  })
+  afterEach(() => {
+    global.sinon.restore()
   })
   describe('debug_traceTransaction', () => {
-    const mockCallback = (counter, payload, cb) => {
-      callCounter += 1
-      lastPayload = payload
-      if (payload.method === 'eth_sendTransaction') {
-        cb(null, revertResponseForSendTransaction)
-      } else if (payload.method === 'eth_call') {
-        cb(null, revertResponseForCall)
+    const mockCallback = (isRevertTransaction = true) => {
+      return (counter, payload, cb) => {
+        callCounter += 1
+        lastPayload = payload
+        if (payload.method === 'eth_sendTransaction') {
+          const response = isRevertTransaction ? revertResponseForSendTransaction : successResponseForSendTransaction
+          cb(null, response)
+        } else if (payload.method === 'eth_call') {
+          cb(null, revertResponseForCall)
+        }
       }
     }
+    it('success transaction.', async() => {
+      try {
+        await targetProvider(mockCallback(false)).sendAsync(payload, (err, res) => {
+          if (err) {
+            if (err) throwInPromise(err)
+          }
+        })
+        assert.equal(1, callCounter)
+        assert.equal('eth_sendTransaction', lastPayload.method)
+        assert.equal('0x2c2b9c9a4a25e24b174f26114e8926a9f2128fe4', lastPayload.params[0].to)
+        assert.equal(false, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
+      } catch (e) {
+        assert.fail(e)
+      }
+    })
     it('call debug_traceTransaction if trigger by eth_sendTransaction.', async() => {
-      await targetProvider(mockCallback).sendAsync(payload, (err, res) => {
+      await targetProvider(mockCallback()).sendAsync(payload, (err, res) => {
         if (err) {
           assert.fail()
         }
@@ -53,7 +77,7 @@ describe('Web3TraceProvider', () => {
     })
     it('call debug_traceTransaction if trigger by eth_call.', async() => {
       const callPayload = Object.assign(payload, {method: 'eth_call'})
-      await targetProvider(mockCallback).sendAsync(callPayload, (err, res) => {
+      await targetProvider(mockCallback()).sendAsync(callPayload, (err, res) => {
         if (err) {
           assert.fail()
         }
