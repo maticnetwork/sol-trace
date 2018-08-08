@@ -125,6 +125,7 @@ describe('Web3TraceProvider', () => {
         })
         assert.equal(1, callCounter)
         assert.equal('eth_call', lastPayload.method)
+        assert.equal(true, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
       } catch (e) {
         assert.fail(e)
       }

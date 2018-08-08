@@ -48,10 +48,10 @@ export default class Web3TraceProvider {
                 cb(traceError, result)
               })
           } else {
+            console.warn('Could not trace REVERT. maybe legacy node.')
             cb(err, result)
           }
         } else {
-          console.warn('Could not trace REVERT. maybe legacy node.')
           cb(err, result)
         }
       })
