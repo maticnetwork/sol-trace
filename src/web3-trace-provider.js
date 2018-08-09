@@ -52,13 +52,8 @@ export default class Web3TraceProvider {
             cb(err, result)
           }
         } else if (result.result && result.result.startsWith(REVERT_MESSAGE_ID)) {
-          const returndata = utils.toBuffer(result.result, 'hex')
-          const dataoffset = utils.bufferToInt(returndata.slice(4).slice(0, 32))
-          const abidata = returndata.slice(36)
-          const stringBody = abidata.slice(dataoffset)
-          const length = utils.bufferToInt(returndata.slice(36).slice(0, 32))
-          const revertReason = utils.bufferToHex(stringBody.slice(0, length))
-          console.warn(`VM Exception while processing transaction: revert. reason: ${revertReason}.`)
+          const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
+          console.warn(`VM Exception while processing transaction: revert. reason: ${messageBuf.toString()}`)
         } else {
           cb(err, result)
         }
@@ -77,7 +72,7 @@ export default class Web3TraceProvider {
     if (returndata instanceof String) {
       returndata = utils.toBuffer(returndata, 'hex')
     } else if (!(returndata instanceof Buffer)) {
-      throw new Error('returndata is MUST hex String or Buffer')
+      throw new Error('returndata is MUST hex String or Buffer.')
     }
     if (returndata.length < (4 + 32 + 32 + 32)) {
       //  4: method id
@@ -90,7 +85,7 @@ export default class Web3TraceProvider {
     const abiencodedata = returndata.slice(36)
     const stringBody = abiencodedata.slice(dataoffset)
     const length = utils.bufferToInt(abiencodedata.slice(0, 32))
-    return utils.bufferToHex(stringBody.slice(0, length))
+    return stringBody.slice(0, length)
   }
 
   /**

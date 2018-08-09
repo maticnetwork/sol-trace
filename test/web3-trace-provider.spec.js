@@ -50,14 +50,14 @@ describe('Web3TraceProvider', () => {
     const tp = new Web3TraceProvider({})
     it('success transaction.', async() => {
       const reason = tp.pickUpRevertReason(abiEncodeError('hoge'))
-      assert.equal(utils.bufferToHex(Buffer.from('hoge')), reason)
+      assert.equal('hoge', reason.toString())
     })
     it('unspport data type number.', async() => {
       try {
         tp.pickUpRevertReason(1234)
         assert.fail('must be error')
       } catch (e) {
-        assert.equal('returndata is MUST hex String or Buffer', e.message)
+        assert.equal('returndata is MUST hex String or Buffer.', e.message)
       }
     })
     it('unspport data type array.', async() => {
@@ -65,7 +65,7 @@ describe('Web3TraceProvider', () => {
         tp.pickUpRevertReason([])
         assert.fail('must be error')
       } catch (e) {
-        assert.equal('returndata is MUST hex String or Buffer', e.message)
+        assert.equal('returndata is MUST hex String or Buffer.', e.message)
       }
     })
     it('data too short error.', async() => {
@@ -189,7 +189,7 @@ describe('Web3TraceProvider', () => {
         })
         assert.equal(1, callCounter)
         assert.equal('eth_call', lastPayload.method)
-        assert.equal(true, spy.calledWith('VM Exception while processing transaction: revert. reason: 0x6e756d20697320736d616c6c.'))
+        assert.equal(true, spy.calledWith('VM Exception while processing transaction: revert. reason: num is small'))
       } catch (e) {
         assert.fail(e)
       }
