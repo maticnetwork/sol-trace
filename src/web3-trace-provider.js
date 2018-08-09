@@ -4,7 +4,7 @@ import utils from 'ethereumjs-util'
 
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
-
+const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
     this.web3 = web3
@@ -51,6 +51,14 @@ export default class Web3TraceProvider {
             console.warn('Could not trace REVERT. maybe legacy node.')
             cb(err, result)
           }
+        } else if (result.result && result.result.startsWith(REVERT_MESSAGE_ID)) {
+          const returndata = utils.toBuffer(result.result, 'hex')
+          const dataoffset = utils.bufferToInt(returndata.slice(4).slice(0, 32))
+          const abidata = returndata.slice(36)
+          const stringBody = abidata.slice(dataoffset)
+          const length = utils.bufferToInt(returndata.slice(36).slice(0, 32))
+          const revertReason = utils.bufferToHex(stringBody.slice(0, length))
+          console.warn(`VM Exception while processing transaction: revert. reason: ${revertReason}.`)
         } else {
           cb(err, result)
         }

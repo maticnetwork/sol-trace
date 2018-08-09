@@ -77,6 +77,12 @@ const oldVerResponse = {
   }
 }
 
+const gethRevertResponseForEthCall = {
+  jsonrpc: '2.0',
+  id: 43,
+  result: '0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c6e756d20697320736d616c6c0000000000000000000000000000000000000000'
+}
+
 const getCodeMock = (mock) => {
   return (address) => {
     const payload = {
@@ -98,5 +104,6 @@ export {
   payload,
   traceErrorResponse,
   oldVerResponse,
+  gethRevertResponseForEthCall,
   getCodeMock
 }

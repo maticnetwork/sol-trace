@@ -2,6 +2,7 @@ import Web3TraceProvider from '../src/web3-trace-provider'
 import MockProvider from './mock-provider'
 import {
   getCodeMock,
+  gethRevertResponseForEthCall,
   oldVerResponse,
   payload,
   revertResponseForCall,
@@ -10,7 +11,7 @@ import {
   traceErrorResponse
 } from './jsonrpc_datas'
 
-global.sinon = require('sinon')
+const sinon = require('sinon')
 const assert = require('assert')
 const throwInPromise = (error) => {
   setTimeout(() => {
@@ -32,10 +33,10 @@ describe('Web3TraceProvider', () => {
   beforeEach(() => {
     callCounter = 0
     lastPayload = ''
-    spy = global.sinon.spy(console, 'warn')
+    spy = sinon.spy(console, 'warn')
   })
   afterEach(() => {
-    global.sinon.restore()
+    sinon.restore()
   })
   describe('debug_traceTransaction', () => {
     const mockCallback = (isRevertTransaction = true) => {
@@ -126,6 +127,30 @@ describe('Web3TraceProvider', () => {
         assert.equal(1, callCounter)
         assert.equal('eth_call', lastPayload.method)
         assert.equal(true, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
+      } catch (e) {
+        assert.fail(e)
+      }
+    })
+  })
+
+  describe('geth support', () => {
+    const debugTraceErrorMock = (counter, payload, cb) => {
+      callCounter += 1
+      lastPayload = payload
+      if (payload.method === 'eth_call') {
+        return cb(null, gethRevertResponseForEthCall)
+      }
+    }
+
+    it('geth revert response when eth_call.', async() => {
+      const callPayload = Object.assign(payload, {method: 'eth_call'})
+      try {
+        await targetProvider(debugTraceErrorMock).sendAsync(callPayload, (err, res) => {
+          if (err) throwInPromise(err)
+        })
+        assert.equal(1, callCounter)
+        assert.equal('eth_call', lastPayload.method)
+        assert.equal(true, spy.calledWith('VM Exception while processing transaction: revert. reason: 0x6e756d20697320736d616c6c.'))
       } catch (e) {
         assert.fail(e)
       }
