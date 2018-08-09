@@ -10,7 +10,7 @@ import {
   successResponseForSendTransaction,
   traceErrorResponse
 } from './jsonrpc_datas'
-
+import utils from 'ethereumjs-util'
 const sinon = require('sinon')
 const assert = require('assert')
 const throwInPromise = (error) => {
@@ -37,6 +37,45 @@ describe('Web3TraceProvider', () => {
   })
   afterEach(() => {
     sinon.restore()
+  })
+  describe('pickUpRevertReason', () => {
+    const abiEncodeError = (message) => {
+      const prefix = utils.toBuffer('0x08c379a00000000000000000000000000000000000000000000000000000000000000020')
+      const lengthBuf = Buffer.alloc(32, 0)
+      lengthBuf.writeUInt32BE(message.length, 28)
+      const bodyBuf = Buffer.alloc(32, 0)
+      bodyBuf.write(message)
+      return Buffer.concat([prefix, lengthBuf, bodyBuf])
+    }
+    const tp = new Web3TraceProvider({})
+    it('success transaction.', async() => {
+      const reason = tp.pickUpRevertReason(abiEncodeError('hoge'))
+      assert.equal(utils.bufferToHex(Buffer.from('hoge')), reason)
+    })
+    it('unspport data type number.', async() => {
+      try {
+        tp.pickUpRevertReason(1234)
+        assert.fail('must be error')
+      } catch (e) {
+        assert.equal('returndata is MUST hex String or Buffer', e.message)
+      }
+    })
+    it('unspport data type array.', async() => {
+      try {
+        tp.pickUpRevertReason([])
+        assert.fail('must be error')
+      } catch (e) {
+        assert.equal('returndata is MUST hex String or Buffer', e.message)
+      }
+    })
+    it('data too short error.', async() => {
+      try {
+        tp.pickUpRevertReason(Buffer.from('hoge'))
+        assert.fail('must be error')
+      } catch (e) {
+        assert.equal('returndata.length is MUST 100+.', e.message)
+      }
+    })
   })
   describe('debug_traceTransaction', () => {
     const mockCallback = (isRevertTransaction = true) => {

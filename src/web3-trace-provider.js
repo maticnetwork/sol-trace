@@ -69,6 +69,31 @@ export default class Web3TraceProvider {
   }
 
   /**
+   * Pick up revert reason
+   * @param  returndata Return data of evm that in contains eth_call response.
+   * @return revert reason message
+   */
+  pickUpRevertReason(returndata) {
+    if (returndata instanceof String) {
+      returndata = utils.toBuffer(returndata, 'hex')
+    } else if (!(returndata instanceof Buffer)) {
+      throw new Error('returndata is MUST hex String or Buffer')
+    }
+    if (returndata.length < (4 + 32 + 32 + 32)) {
+      //  4: method id
+      // 32: abi encode header
+      // 32: string length
+      // 32: string body(min)
+      throw new Error('returndata.length is MUST 100+.')
+    }
+    const dataoffset = utils.bufferToInt(returndata.slice(4).slice(0, 32))
+    const abiencodedata = returndata.slice(36)
+    const stringBody = abiencodedata.slice(dataoffset)
+    const length = utils.bufferToInt(abiencodedata.slice(0, 32))
+    return utils.bufferToHex(stringBody.slice(0, length))
+  }
+
+  /**
    * Gets the contract code by address
    * @param  address Address of the contract
    * @return Code of the contract
