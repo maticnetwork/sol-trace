@@ -54,6 +54,7 @@ export default class Web3TraceProvider {
         } else if (result.result && result.result.startsWith(REVERT_MESSAGE_ID)) {
           const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
           console.warn(`VM Exception while processing transaction: revert. reason: ${messageBuf.toString()}`)
+          cb(err, result)
         } else {
           cb(err, result)
         }

@@ -15,6 +15,7 @@ import utils from 'ethereumjs-util'
 const sinon = require('sinon')
 const assert = require('assert')
 
+const copy = (obj) => JSON.parse(JSON.stringify(obj))
 const prosmify = (provider, payload) => {
   return new Promise((resolve, reject) => {
     provider.sendAsync(payload, (err, res) => err ? reject(err) : resolve(res))
@@ -116,7 +117,7 @@ describe('Web3TraceProvider', function() {
       it('call debug_traceTransaction if trigger by eth_call.', async() => {
         const callPayload = Object.assign(payload, {method: 'eth_call'})
         stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
-          cb(null, revertResponseForCall)
+          cb(null, copy(revertResponseForCall))
         })
         await prosmify(provider, callPayload)
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
@@ -133,7 +134,7 @@ describe('Web3TraceProvider', function() {
           cb(null, traceErrorResponse)
         })
         stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
-          cb(null, revertResponseForCall)
+          cb(null, copy(revertResponseForCall))
         })
         await prosmify(provider, callPayload)
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
