@@ -4,6 +4,7 @@ import utils from 'ethereumjs-util'
 
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
+
 const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
@@ -26,11 +27,7 @@ export default class Web3TraceProvider {
     if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call') {
       const txData = payload.params[0]
       return this.nextProvider.sendAsync(payload, (err, result) => {
-        if (
-          result.error &&
-          result.error.message &&
-          result.error.message.endsWith(': revert')
-        ) {
+        if (this._isGanacheRevertResponse(result)) {
           const txHash = result.result || Object.keys(result.error.data)[0]
           if (utils.toBuffer(txHash).length === 32) {
             const toAddress =
@@ -51,7 +48,7 @@ export default class Web3TraceProvider {
             console.warn('Could not trace REVERT. maybe legacy node.')
             cb(err, result)
           }
-        } else if (result.result && result.result.startsWith(REVERT_MESSAGE_ID)) {
+        } else if (this._isGethRevertResponse(result)) {
           const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
           console.warn(`VM Exception while processing transaction: revert. reason: ${messageBuf.toString()}`)
           cb(err, result)
@@ -62,6 +59,26 @@ export default class Web3TraceProvider {
     }
 
     return this.nextProvider.sendAsync(payload, cb)
+  }
+
+  /**
+   * Check the response result is ganache-core response and has revert error.
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isGanacheRevertResponse(result) {
+    return (result.error &&
+      result.error.message &&
+      result.error.message.endsWith(': revert'))
+  }
+
+  /**
+   * Check the response result is go-ethereum response and has revert reason.
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isGethRevertResponse(result) {
+    return (result.result && result.result.startsWith(REVERT_MESSAGE_ID))
   }
 
   /**
