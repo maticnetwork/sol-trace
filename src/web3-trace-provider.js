@@ -24,7 +24,7 @@ export default class Web3TraceProvider {
   }
 
   sendAsync(payload, cb) {
-    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call') {
+    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call' || payload.method === 'eth_getTransactionReceipt') {
       const txData = payload.params[0]
       return this.nextProvider.sendAsync(payload, (err, result) => {
         if (this._isGanacheRevertResponse(result)) {
@@ -36,7 +36,7 @@ export default class Web3TraceProvider {
                 : txData.to
 
             // record tx trace
-            this.recordTxTrace(toAddress, txData.data, txHash, result)
+            this.recordTxTrace(toAddress, txHash, result)
               .then(traceResult => {
                 result.error.message += traceResult
                 cb(err, result)
@@ -48,10 +48,22 @@ export default class Web3TraceProvider {
             console.warn('Could not trace REVERT. maybe legacy node.')
             cb(err, result)
           }
-        } else if (this._isGethRevertResponse(result)) {
+        } else if (this._isGethEthCallRevertResponse(payload.method, result)) {
           const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
           console.warn(`VM Exception while processing transaction: revert. reason: ${messageBuf.toString()}`)
           cb(err, result)
+        } else if (this._isGethErrorReceiptResponse(payload.method, result)) {
+          // record tx trace
+          const toAddress = result.result.to
+          const txHash = result.result.transactionHash
+          this.recordTxTrace(toAddress, txHash, result)
+            .then(traceResult => {
+              console.warn(traceResult)
+              cb(err, result)
+            })
+            .catch(traceError => {
+              cb(traceError, result)
+            })
         } else {
           cb(err, result)
         }
@@ -74,11 +86,22 @@ export default class Web3TraceProvider {
 
   /**
    * Check the response result is go-ethereum response and has revert reason.
+   * @param  method Request JSON-RPC method
    * @param  result Response data.
    * @return boolean
    */
-  _isGethRevertResponse(result) {
-    return (result.result && result.result.startsWith(REVERT_MESSAGE_ID))
+  _isGethEthCallRevertResponse(method, result) {
+    return (method === 'eth_call' && result.result && result.result.startsWith(REVERT_MESSAGE_ID))
+  }
+
+  /**
+   * Check the response result is go-ethereum transaction receipt response and it mark error.
+   * @param  method Request JSON-RPC method
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isGethErrorReceiptResponse(method, result) {
+    return (method === 'eth_getTransactionReceipt' && result.result && result.result.status === '0x0')
   }
 
   /**
@@ -117,14 +140,16 @@ export default class Web3TraceProvider {
 
   /**
    * Gets the debug trace of a transaction
+   * @param  nextId Next request ID of JSON-RPC.
    * @param  txHash Hash of the transactuon to get a trace for
    * @param  traceParams Config object allowing you to specify if you need memory/storage/stack traces.
    * @return Transaction trace
    */
-  getTransactionTrace(txHash, traceParams = {}) {
+  getTransactionTrace(nextId, txHash, traceParams = {}) {
     return new Promise((resolve, reject) => {
       this.nextProvider.sendAsync(
         {
+          id: nextId,
           method: 'debug_traceTransaction',
           params: [txHash, traceParams]
         },
@@ -139,8 +164,8 @@ export default class Web3TraceProvider {
     })
   }
 
-  async recordTxTrace(address, data, txHash, result) {
-    const trace = await this.getTransactionTrace(txHash, {
+  async recordTxTrace(address, txHash, result) {
+    const trace = await this.getTransactionTrace(result.id + 1, txHash, {
       disableMemory: true,
       disableStack: false,
       disableStorage: true

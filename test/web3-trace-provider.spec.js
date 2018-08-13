@@ -1,8 +1,8 @@
 import Web3TraceProvider from '../src/web3-trace-provider'
 import MockProvider from './mock-provider'
 import {
-  getCodeMock,
-  gethRevertResponseForEthCall,
+  getCodeMock, gethRevertReceiptResponse,
+  gethRevertResponseForEthCall, getReceiptPayload,
   oldVerResponse,
   payload,
   revertResponseForCall,
@@ -166,6 +166,17 @@ describe('Web3TraceProvider', function() {
         assert.equal(1, stub.callCount)
         assert.equal(JSON.stringify(['eth_call']), JSON.stringify(spyCalledMethods))
         assert.equal(true, spy.calledWith('VM Exception while processing transaction: revert. reason: num is small'))
+      })
+      it('geth revert response of receipt.', async() => {
+        stub.withArgs(matchMethod('eth_getTransactionReceipt'), sinon.match.func).callsFake((payload, cb) => {
+          cb(null, gethRevertReceiptResponse)
+        })
+        await prosmify(provider, getReceiptPayload)
+        const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
+        assert.equal(3, stub.callCount)
+        assert.equal(JSON.stringify(spyCalledMethods), JSON.stringify(['eth_getTransactionReceipt', 'debug_traceTransaction', 'eth_getCode']))
+        assert.equal(stub.getCall(1).args[0].params[0], '0x43cc231fac6c0b8cc341328aeb727efb77b860508c03502376cd52ec2eee75da')
+        assert.equal(stub.getCall(1).args[0].id, 179)
       })
     })
   })
