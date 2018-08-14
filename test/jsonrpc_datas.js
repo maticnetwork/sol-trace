@@ -53,6 +53,37 @@ const payload = {
     }]
 }
 
+const createContractPayload = {
+  jsonrpc: '2.0',
+  id: 28,
+  method: 'eth_sendTransaction',
+  params: [
+    {
+      from: '0x627306090abab3a6e1400e9345bc60c78a8bef57',
+      gas: '0x6691b7',
+      gasPrice: '0x174876e800',
+      data: '0x608060405234801561001057600080fd5b506003600111151561008a576040517f0'
+    }
+  ]
+}
+
+const revertResponseOfCreation = {
+  id: 28,
+  jsonrpc: '2.0',
+  result: '0xed1e09446747429b5a06e84a3ff65b9e1c8a09b03e060b1fbd6168f141992198',
+  error: {
+    message: 'VM Exception while processing transaction: revert',
+    code: -32000,
+    data: {
+      0xed1e09446747429b5a06e84a3ff65b9e1c8a09b03e060b1fbd6168f141992198: {
+        error: 'revert',
+        program_counter: 138
+      },
+      stack: 'c: VM Exception while processing transaction: revert\n    at Function.c.fromResults ... (timers.js:745:5)',
+      name: 'c'
+    }
+  }
+}
 const traceErrorResponse = {
   error: {
     message: 'Unknown transaction 0x834f1e4f70dfe8fdb6cfaacbc8a4a80768946510e33ddc6b47ef09bea0c2eec8',
@@ -102,13 +133,32 @@ const gethRevertReceiptResponse = {
     from: '0xe6e90fcdd98205bd23e0e17f6ec20ba5cab52228',
     gasUsed: '0x55aa',
     logs: [],
-    logsBloom: '0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+    logsBloom: '0x00000000000',
     status: '0x0',
     to: '0xbd52e0e8edd51f5e763f7fad89027440fca2217e',
     transactionHash: '0x43cc231fac6c0b8cc341328aeb727efb77b860508c03502376cd52ec2eee75da',
     transactionIndex: '0x0'
   }
 }
+const gethRevertReceiptCreationResponse = {
+  jsonrpc: '2.0',
+  id: 21,
+  result: {
+    blockHash: '0xab11ce9cde710fe805e973f3d1aa335d999fb255896aecce016be563467b9b21',
+    blockNumber: '0x21',
+    contractAddress: '0xde75613b0f6f843b4b618eb2f9a09424a16fd46a',
+    cumulativeGasUsed: '0x43b96',
+    from: '0xe6e90fcdd98205bd23e0e17f6ec20ba5cab52228',
+    gasUsed: '0x43b96',
+    logs: [],
+    logsBloom: '0x0000000000000000',
+    status: '0x0',
+    to: null,
+    transactionHash: '0x39b37a0f46525d1c233a461e97e3df398347c93e811a64e6aad150422eb9d0d5',
+    transactionIndex: '0x0'
+  }
+}
+
 const getCodeMock = (mock) => {
   return (address) => {
     const payload = {
@@ -128,10 +178,13 @@ export {
   revertResponseForSendTransaction,
   successResponseForSendTransaction,
   payload,
+  createContractPayload,
+  revertResponseOfCreation,
   traceErrorResponse,
   oldVerResponse,
   gethRevertResponseForEthCall,
   getReceiptPayload,
   gethRevertReceiptResponse,
+  gethRevertReceiptCreationResponse,
   getCodeMock
 }

@@ -30,11 +30,7 @@ export default class Web3TraceProvider {
         if (this._isGanacheRevertResponse(result)) {
           const txHash = result.result || Object.keys(result.error.data)[0]
           if (utils.toBuffer(txHash).length === 32) {
-            const toAddress =
-              !txData.to || txData.to === '0x0'
-                ? constants.NEW_CONTRACT
-                : txData.to
-
+            const toAddress = txData.to
             // record tx trace
             this.recordTxTrace(toAddress, txHash, result)
               .then(traceResult => {
@@ -165,6 +161,9 @@ export default class Web3TraceProvider {
   }
 
   async recordTxTrace(address, txHash, result) {
+    address = !address || address === '0x0'
+      ? constants.NEW_CONTRACT
+      : address
     const trace = await this.getTransactionTrace(result.id + 1, txHash, {
       disableMemory: true,
       disableStack: false,
