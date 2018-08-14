@@ -92,7 +92,7 @@ describe('Web3TraceProvider', function() {
       spy.restore()
       sinon.restore()
     })
-    describe('debug_traceTransaction', () => {
+    describe('support ganache', () => {
       it('success transaction.', async() => {
         stub.withArgs(matchMethod('eth_sendTransaction'), sinon.match.func).callsFake((payload, cb) => cb(null, successResponseForSendTransaction))
 
@@ -103,7 +103,7 @@ describe('Web3TraceProvider', function() {
         assert.equal('0x2c2b9c9a4a25e24b174f26114e8926a9f2128fe4', stub.firstCall.args[0].params[0].to)
         assert.equal(false, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
       })
-      it('debug_traceTransaction returns arrays.', async() => {
+      it('eth_sendTransaction', async() => {
         stub.withArgs(matchMethod('eth_sendTransaction'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, revertResponseForSendTransaction)
         })
@@ -114,7 +114,7 @@ describe('Web3TraceProvider', function() {
           , JSON.stringify(spyCalledMethods))
         assert.equal('0x25e2028b4459864af2f7bfeccfa387ff2d9922b2da840687a9ae7233fa2c72ba', stub.getCall(1).args[0].params[0])
       })
-      it('call debug_traceTransaction if trigger by eth_call.', async() => {
+      it('eth_call', async() => {
         const callPayload = Object.assign(payload, {method: 'eth_call'})
         stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, copy(revertResponseForCall))
@@ -126,8 +126,17 @@ describe('Web3TraceProvider', function() {
           , JSON.stringify(spyCalledMethods))
         assert.equal('0x4edb02794d2e5d5c4c8c71bd033990158f5839bb9ab2e6f09c241aec16a0c008', stub.getCall(1).args[0].params[0])
       })
-    })
-    describe('getStackTraceSimple', () => {
+      it('eth_call old ver response.', async() => {
+        const callPayload = Object.assign(payload, {method: 'eth_call'})
+        stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
+          cb(null, oldVerResponse)
+        })
+        await prosmify(provider, callPayload)
+        const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
+        assert.equal(1, stub.callCount)
+        assert.equal(JSON.stringify(['eth_call']), JSON.stringify(spyCalledMethods))
+        assert.equal(true, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
+      })
       it('when debug_traceTransaction retrun error.', async() => {
         const callPayload = Object.assign(payload, {method: 'eth_call'})
         stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
@@ -141,17 +150,6 @@ describe('Web3TraceProvider', function() {
         assert.equal(3, stub.callCount)
         assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode'])
           , JSON.stringify(spyCalledMethods))
-      })
-      it('eth_call old ver response.', async() => {
-        const callPayload = Object.assign(payload, {method: 'eth_call'})
-        stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
-          cb(null, oldVerResponse)
-        })
-        await prosmify(provider, callPayload)
-        const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-        assert.equal(1, stub.callCount)
-        assert.equal(JSON.stringify(['eth_call']), JSON.stringify(spyCalledMethods))
-        assert.equal(true, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
       })
     })
 
