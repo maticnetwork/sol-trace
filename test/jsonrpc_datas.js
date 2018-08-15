@@ -39,10 +39,25 @@ const successResponseForSendTransaction = {
   jsonrpc: '2.0',
   result: '0x25e2028b4459864af2f7bfeccfa387ff2d9922b2da840687a9ae7233fa2c72ba'
 }
+
 const payload = {
   jsonrpc: '2.0',
   id: 43,
   method: 'eth_sendTransaction',
+  params:
+    [{
+      from: '0x627306090abab3a6e1400e9345bc60c78a8bef57',
+      gas: '0x6691b7',
+      gasPrice: '0x174876e800',
+      to: '0x2c2b9c9a4a25e24b174f26114e8926a9f2128fe4',
+      data: '0x4552e5c80000000000000000000000000000000000000000000000000000000000000014'
+    }]
+}
+
+const callPayload = {
+  jsonrpc: '2.0',
+  id: 43,
+  method: 'eth_call',
   params:
     [{
       from: '0x627306090abab3a6e1400e9345bc60c78a8bef57',
@@ -122,6 +137,43 @@ const getReceiptPayload = {
     '0x43cc231fac6c0b8cc341328aeb727efb77b860508c03502376cd52ec2eee75da'
   ]
 }
+
+const invalidResponseForSnedTransaction = {
+  id: 44,
+  jsonrpc: '2.0',
+  result: '0x3fc7e54d66f0c5cf6e5ca2c4f15bb452358f81b3b7be41cb1a80e47c2b6e502e',
+  error: {
+    message: 'VM Exception while processing transaction: invalid opcode',
+    code: -32000,
+    data: {
+      '0x3fc7e54d66f0c5cf6e5ca2c4f15bb452358f81b3b7be41cb1a80e47c2b6e502e': {
+        error: 'invalid opcode',
+        program_counter: 447
+      },
+      stack: 'c: VM Exception while processing transaction: invalid opcode\n    at Function.c.fromResults ... (timers.js:745:5)',
+      name: 'c'
+    }
+  }
+}
+
+const invalidResponseForEthCall = {
+  id: 45,
+  jsonrpc: '2.0',
+  error: {
+    message: 'VM Exception while processing transaction: invalid opcode',
+    code: -32000,
+    data: {
+      '0x51fda2c5f2e3741b53e85fac9862724f7fc8f73605b60c4875a127a95a879892': {
+        error: 'invalid opcode',
+        program_counter: 893,
+        return: '0x0'
+      },
+      stack: 'c: VM Exception while processing transaction: invalid opcode\n ... /build/cli.node.js:25:392',
+      name: 'c'
+    }
+  }
+}
+
 const gethRevertReceiptResponse = {
   jsonrpc: '2.0',
   id: 178,
@@ -178,6 +230,7 @@ export {
   revertResponseForSendTransaction,
   successResponseForSendTransaction,
   payload,
+  callPayload,
   createContractPayload,
   revertResponseOfCreation,
   traceErrorResponse,
@@ -186,5 +239,7 @@ export {
   getReceiptPayload,
   gethRevertReceiptResponse,
   gethRevertReceiptCreationResponse,
+  invalidResponseForSnedTransaction,
+  invalidResponseForEthCall,
   getCodeMock
 }

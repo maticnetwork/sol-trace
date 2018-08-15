@@ -27,12 +27,12 @@ export default class Web3TraceProvider {
     if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call' || payload.method === 'eth_getTransactionReceipt') {
       const txData = payload.params[0]
       return this.nextProvider.sendAsync(payload, (err, result) => {
-        if (this._isGanacheRevertResponse(result)) {
+        if (this._isGanacheErrorResponse(result)) {
           const txHash = result.result || Object.keys(result.error.data)[0]
           if (utils.toBuffer(txHash).length === 32) {
             const toAddress = txData.to
             // record tx trace
-            this.recordTxTrace(toAddress, txHash, result)
+            this.recordTxTrace(toAddress, txHash, result, this._isInvalidOpcode(result))
               .then(traceResult => {
                 result.error.message += traceResult
                 cb(err, result)
@@ -41,7 +41,7 @@ export default class Web3TraceProvider {
                 cb(traceError, result)
               })
           } else {
-            console.warn('Could not trace REVERT. maybe legacy node.')
+            console.warn('Could not trace REVERT / invalid opcode. maybe legacy node.')
             cb(err, result)
           }
         } else if (this._isGethEthCallRevertResponse(payload.method, result)) {
@@ -74,10 +74,19 @@ export default class Web3TraceProvider {
    * @param  result Response data.
    * @return boolean
    */
-  _isGanacheRevertResponse(result) {
+  _isGanacheErrorResponse(result) {
     return (result.error &&
       result.error.message &&
-      result.error.message.endsWith(': revert'))
+      (result.error.message.endsWith(': revert') || result.error.message.endsWith(': invalid opcode')))
+  }
+
+  /**
+   * Check is invalid opcode error.
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isInvalidOpcode(result) {
+    return result.error.message.endsWith(': invalid opcode')
   }
 
   /**
@@ -160,7 +169,7 @@ export default class Web3TraceProvider {
     })
   }
 
-  async recordTxTrace(address, txHash, result) {
+  async recordTxTrace(address, txHash, result, isInvalid = false) {
     address = !address || address === '0x0'
       ? constants.NEW_CONTRACT
       : address
@@ -177,11 +186,11 @@ export default class Web3TraceProvider {
       // revert.
       return this.getStackTrace(evmCallStack)
     } else {
-      return this.getStackTranceSimple(address, txHash, result)
+      return this.getStackTranceSimple(address, txHash, result, isInvalid)
     }
   }
 
-  async getStackTranceSimple(address, txHash, result) {
+  async getStackTranceSimple(address, txHash, result, isInvalid = false) {
     if (!this._contractsData) {
       this._contractsData = this.collectContractsData()
     }
@@ -191,7 +200,8 @@ export default class Web3TraceProvider {
       bytecode
     )
     if (!contractData) {
-      console.warn(`eth_call to an unknown address: ${address}`)
+      console.warn(`unknown contract address: ${address}.`)
+      console.warn('Maybe you try to \'rm build/contracts/* && truffle compile\' for reset sourceMap.')
       return null
     }
 
@@ -219,16 +229,17 @@ export default class Web3TraceProvider {
       }
     }
 
+    const errorType = isInvalid ? 'invalid opcode' : 'REVERT'
     if (sourceRange) {
       const traceArray = [
         sourceRange.fileName,
         sourceRange.location.start.line,
         sourceRange.location.start.column
       ].join(':')
-      return `\n\nStack trace for REVERT:\n${traceArray}\n`
+      return `\n\nStack trace for ${errorType}:\n${traceArray}\n`
     }
 
-    return '\n\nCould not determine stack trace for REVERT\n'
+    return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
   async getStackTrace(evmCallStack) {

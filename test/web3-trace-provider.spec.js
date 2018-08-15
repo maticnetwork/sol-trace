@@ -1,16 +1,19 @@
 import Web3TraceProvider from '../src/web3-trace-provider'
 import MockProvider from './mock-provider'
 import {
+  callPayload,
   createContractPayload,
   getCodeMock,
   gethRevertReceiptCreationResponse,
   gethRevertReceiptResponse,
   gethRevertResponseForEthCall,
-  getReceiptPayload,
+  getReceiptPayload, invalidResponseForEthCall,
+  invalidResponseForSnedTransaction,
   oldVerResponse,
   payload,
   revertResponseForCall,
-  revertResponseForSendTransaction, revertResponseOfCreation,
+  revertResponseForSendTransaction,
+  revertResponseOfCreation,
   successResponseForSendTransaction,
   traceErrorResponse
 } from './jsonrpc_datas'
@@ -119,19 +122,24 @@ describe('Web3TraceProvider', function() {
         assert.equal('0x25e2028b4459864af2f7bfeccfa387ff2d9922b2da840687a9ae7233fa2c72ba', stub.getCall(1).args[0].params[0])
       })
       it('eth_call', async() => {
-        const callPayload = Object.assign(payload, {method: 'eth_call'})
         stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, copy(revertResponseForCall))
         })
-        await prosmify(provider, callPayload)
-        const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-        assert.equal(3, stub.callCount)
-        assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode'])
-          , JSON.stringify(spyCalledMethods))
-        assert.equal('0x4edb02794d2e5d5c4c8c71bd033990158f5839bb9ab2e6f09c241aec16a0c008', stub.getCall(1).args[0].params[0])
+        const spyGetStackTranceSimple = sinon.spy(provider, 'getStackTranceSimple')
+        try {
+          await prosmify(provider, callPayload)
+          const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
+          assert.equal(3, stub.callCount)
+          assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode'])
+            , JSON.stringify(spyCalledMethods))
+          assert.equal('0x4edb02794d2e5d5c4c8c71bd033990158f5839bb9ab2e6f09c241aec16a0c008', stub.getCall(1).args[0].params[0])
+          assert.equal(spyGetStackTranceSimple.called, true)
+          assert.equal(spyGetStackTranceSimple.firstCall.args[3], false)
+        } finally {
+          spyGetStackTranceSimple.restore()
+        }
       })
       it('eth_call old ver response.', async() => {
-        const callPayload = Object.assign(payload, {method: 'eth_call'})
         stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, oldVerResponse)
         })
@@ -139,10 +147,9 @@ describe('Web3TraceProvider', function() {
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
         assert.equal(1, stub.callCount)
         assert.equal(JSON.stringify(['eth_call']), JSON.stringify(spyCalledMethods))
-        assert.equal(true, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
+        assert.equal(true, spy.calledWith('Could not trace REVERT / invalid opcode. maybe legacy node.'))
       })
       it('when debug_traceTransaction retrun error.', async() => {
-        const callPayload = Object.assign(payload, {method: 'eth_call'})
         stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, traceErrorResponse)
         })
@@ -172,11 +179,44 @@ describe('Web3TraceProvider', function() {
           spyGetStackTranceSimple.restore()
         }
       })
+      it('invalid opcode.', async() => {
+        stub.withArgs(matchMethod('eth_sendTransaction'), sinon.match.func).callsFake((payload, cb) => {
+          cb(null, copy(invalidResponseForSnedTransaction))
+        })
+        const spyGetStackTranceSimple = sinon.spy(provider, 'getStackTranceSimple')
+        try {
+          await prosmify(provider, payload)
+          const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
+          assert.equal(3, stub.callCount)
+          assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode'])
+            , JSON.stringify(spyCalledMethods))
+          assert.equal(spyGetStackTranceSimple.called, true)
+          assert.equal(spyGetStackTranceSimple.firstCall.args[3], true)
+        } finally {
+          spyGetStackTranceSimple.restore()
+        }
+      })
+      it('invalid opcode when eth_call.', async() => {
+        stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
+          cb(null, invalidResponseForEthCall)
+        })
+        const spyGetStackTranceSimple = sinon.spy(provider, 'getStackTranceSimple')
+        try {
+          await prosmify(provider, callPayload)
+          const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
+          assert.equal(3, stub.callCount)
+          assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode'])
+            , JSON.stringify(spyCalledMethods))
+          assert.equal(spyGetStackTranceSimple.called, true)
+          assert.equal(spyGetStackTranceSimple.firstCall.args[3], true)
+        } finally {
+          spyGetStackTranceSimple.restore()
+        }
+      })
     })
 
     describe('geth support', () => {
       it('geth revert response when eth_call.', async() => {
-        const callPayload = Object.assign(payload, {method: 'eth_call'})
         stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, gethRevertResponseForEthCall)
         })
