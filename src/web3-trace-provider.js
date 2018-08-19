@@ -5,6 +5,7 @@ import utils from 'ethereumjs-util'
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
 
+const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
     this.web3 = web3
@@ -23,23 +24,15 @@ export default class Web3TraceProvider {
   }
 
   sendAsync(payload, cb) {
-    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call') {
+    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call' || payload.method === 'eth_getTransactionReceipt') {
       const txData = payload.params[0]
       return this.nextProvider.sendAsync(payload, (err, result) => {
-        if (
-          result.error &&
-          result.error.message &&
-          result.error.message.endsWith(': revert')
-        ) {
+        if (this._isGanacheErrorResponse(result)) {
           const txHash = result.result || Object.keys(result.error.data)[0]
           if (utils.toBuffer(txHash).length === 32) {
-            const toAddress =
-              !txData.to || txData.to === '0x0'
-                ? constants.NEW_CONTRACT
-                : txData.to
-
+            const toAddress = txData.to
             // record tx trace
-            this.recordTxTrace(toAddress, txData.data, txHash, result)
+            this.recordTxTrace(toAddress, txHash, result, this._isInvalidOpcode(result))
               .then(traceResult => {
                 result.error.message += traceResult
                 cb(err, result)
@@ -48,16 +41,97 @@ export default class Web3TraceProvider {
                 cb(traceError, result)
               })
           } else {
+            console.warn('Could not trace REVERT / invalid opcode. maybe legacy node.')
             cb(err, result)
           }
+        } else if (this._isGethEthCallRevertResponse(payload.method, result)) {
+          const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
+          console.warn(`VM Exception while processing transaction: revert. reason: ${messageBuf.toString()}`)
+          cb(err, result)
+        } else if (this._isGethErrorReceiptResponse(payload.method, result)) {
+          // record tx trace
+          const toAddress = result.result.to
+          const txHash = result.result.transactionHash
+          this.recordTxTrace(toAddress, txHash, result)
+            .then(traceResult => {
+              console.warn(traceResult)
+              cb(err, result)
+            })
+            .catch(traceError => {
+              cb(traceError, result)
+            })
         } else {
-          console.warn('Could not trace REVERT. maybe legacy node.')
           cb(err, result)
         }
       })
     }
 
     return this.nextProvider.sendAsync(payload, cb)
+  }
+
+  /**
+   * Check the response result is ganache-core response and has revert error.
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isGanacheErrorResponse(result) {
+    return (result.error &&
+      result.error.message &&
+      (result.error.message.endsWith(': revert') || result.error.message.endsWith(': invalid opcode')))
+  }
+
+  /**
+   * Check is invalid opcode error.
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isInvalidOpcode(result) {
+    return result.error.message.endsWith(': invalid opcode')
+  }
+
+  /**
+   * Check the response result is go-ethereum response and has revert reason.
+   * @param  method Request JSON-RPC method
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isGethEthCallRevertResponse(method, result) {
+    return (method === 'eth_call' && result.result && result.result.startsWith(REVERT_MESSAGE_ID))
+  }
+
+  /**
+   * Check the response result is go-ethereum transaction receipt response and it mark error.
+   * @param  method Request JSON-RPC method
+   * @param  result Response data.
+   * @return boolean
+   */
+  _isGethErrorReceiptResponse(method, result) {
+    return (method === 'eth_getTransactionReceipt' && result.result && result.result.status === '0x0')
+  }
+
+  /**
+   * Pick up revert reason
+   * @param  returndata Return data of evm that in contains eth_call response.
+   * @return revert reason message
+   */
+  pickUpRevertReason(returndata) {
+    if (returndata instanceof String) {
+      returndata = utils.toBuffer(returndata, 'hex')
+    } else if (!(returndata instanceof Buffer)) {
+      throw new Error('returndata is MUST hex String or Buffer.')
+    }
+    if (returndata.length < (4 + 32 + 32 + 32)) {
+      //  4: method id
+      // 32: abi encode header
+      // 32: string length
+      // 32: string body(min)
+      throw new Error('returndata.length is MUST 100+.')
+    }
+    const dataoffset = utils.bufferToInt(returndata.slice(4).slice(0, 32))
+    const abiencodedata = returndata.slice(36)
+    const stringBody = abiencodedata.slice(dataoffset)
+    const length = utils.bufferToInt(abiencodedata.slice(0, 32))
+    return stringBody.slice(0, length)
   }
 
   /**
@@ -71,14 +145,16 @@ export default class Web3TraceProvider {
 
   /**
    * Gets the debug trace of a transaction
+   * @param  nextId Next request ID of JSON-RPC.
    * @param  txHash Hash of the transactuon to get a trace for
    * @param  traceParams Config object allowing you to specify if you need memory/storage/stack traces.
    * @return Transaction trace
    */
-  getTransactionTrace(txHash, traceParams = {}) {
+  getTransactionTrace(nextId, txHash, traceParams = {}) {
     return new Promise((resolve, reject) => {
       this.nextProvider.sendAsync(
         {
+          id: nextId,
           method: 'debug_traceTransaction',
           params: [txHash, traceParams]
         },
@@ -93,8 +169,11 @@ export default class Web3TraceProvider {
     })
   }
 
-  async recordTxTrace(address, data, txHash, result) {
-    const trace = await this.getTransactionTrace(txHash, {
+  async recordTxTrace(address, txHash, result, isInvalid = false) {
+    address = !address || address === '0x0'
+      ? constants.NEW_CONTRACT
+      : address
+    const trace = await this.getTransactionTrace(result.id + 1, txHash, {
       disableMemory: true,
       disableStack: false,
       disableStorage: true
@@ -107,11 +186,11 @@ export default class Web3TraceProvider {
       // revert.
       return this.getStackTrace(evmCallStack)
     } else {
-      return this.getStackTranceSimple(address, txHash, result)
+      return this.getStackTranceSimple(address, txHash, result, isInvalid)
     }
   }
 
-  async getStackTranceSimple(address, txHash, result) {
+  async getStackTranceSimple(address, txHash, result, isInvalid = false) {
     if (!this._contractsData) {
       this._contractsData = this.collectContractsData()
     }
@@ -121,7 +200,8 @@ export default class Web3TraceProvider {
       bytecode
     )
     if (!contractData) {
-      console.warn(`eth_call to an unknown address: ${address}`)
+      console.warn(`unknown contract address: ${address}.`)
+      console.warn('Maybe you try to \'rm build/contracts/* && truffle compile\' for reset sourceMap.')
       return null
     }
 
@@ -149,16 +229,17 @@ export default class Web3TraceProvider {
       }
     }
 
+    const errorType = isInvalid ? 'invalid opcode' : 'REVERT'
     if (sourceRange) {
       const traceArray = [
         sourceRange.fileName,
         sourceRange.location.start.line,
         sourceRange.location.start.column
       ].join(':')
-      return `\n\nStack trace for REVERT:\n${traceArray}\n`
+      return `\n\nStack trace for ${errorType}:\n${traceArray}\n`
     }
 
-    return '\n\nCould not determine stack trace for REVERT\n'
+    return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
   async getStackTrace(evmCallStack) {

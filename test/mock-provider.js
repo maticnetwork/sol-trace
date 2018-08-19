@@ -7,6 +7,6 @@ export default class MockProvider {
   }
 
   sendAsync(payload, cb) {
-    this.mockfunc(this.call_counter, payload, cb)
+    return this.mockfunc(this.call_counter, payload, cb)
   }
 }
