@@ -19,6 +19,11 @@ import { injectInTruffle } from "sol-trace";
 injectInTruffle(web3, artifacts);
 ```
 
+if your node_modules path need correct you do bellow:
+```js
+export MODULE_RELATIVE_PATH=../ && truffle test
+``` 
+
 ### Demo
 
 ![](https://pbs.twimg.com/media/Df1eA7vWkAEg509.jpg)

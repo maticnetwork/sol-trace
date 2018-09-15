@@ -52,6 +52,7 @@
     "sinon": "^6.1.4"
   },
   "dependencies": {
+    "babel-runtime": "^6.26.0",
     "ethereumjs-util": "^5.2.0",
     "glob": "^7.1.2"
   }
