@@ -140,7 +140,22 @@ export default class Web3TraceProvider {
    * @return Code of the contract
    */
   getContractCode(address) {
-    return this.web3.eth.getCode(address)
+    return new Promise((resolve, reject) => {
+      this.nextProvider.sendAsync(
+        {
+          id: new Date().getTime(),
+          method: 'eth_getCode',
+          params: [address]
+        },
+        (err, result) => {
+          if (err) {
+            reject(err)
+          } else {
+            resolve(result.result)
+          }
+        }
+      )
+    })
   }
 
   /**
