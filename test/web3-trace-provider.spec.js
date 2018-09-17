@@ -91,7 +91,7 @@ describe('Web3TraceProvider', function() {
       stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
         cb(null, [{}, {}])
       })
-      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, '0x1234'))
+      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: '0x1234'}))
       stub.callsFake((payload, cb) => cb(null, {}))
     })
     afterEach(() => {
