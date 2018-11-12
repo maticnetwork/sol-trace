@@ -21,7 +21,7 @@ import utils from 'ethereumjs-util'
 
 const sinon = require('sinon')
 const assert = require('assert')
-
+const testContractJSON = require('./contractsData')
 const copy = (obj) => JSON.parse(JSON.stringify(obj))
 const prosmify = (provider, payload) => {
   return new Promise((resolve, reject) => {
@@ -81,13 +81,16 @@ describe('Web3TraceProvider', function() {
   })
   describe('JSON-RPC', () => {
     const provider = targetProvider()
-    let spy, stub
+    let spy, stub, contractDataStub
     const matchMethod = (method) => {
       return sinon.match(payload => payload.method === method)
     }
     beforeEach(() => {
       spy = sinon.spy(console, 'warn')
       stub = sinon.stub(provider.nextProvider, 'sendAsync')
+      contractDataStub = sinon.stub(provider, 'getContractDataIfExists')
+      sinon.stub(provider, 'collectContractsData').returns(testContractJSON)
+      contractDataStub.returns(testContractJSON.contractsData[0])
       stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
         cb(null, [{}, {}])
       })
@@ -96,6 +99,7 @@ describe('Web3TraceProvider', function() {
     })
     afterEach(() => {
       stub.restore()
+      contractDataStub.restore()
       spy.restore()
       sinon.restore()
     })

@@ -199,7 +199,7 @@ export default class Web3TraceProvider {
     if (evmCallStack.length > 0) {
       // if getRevertTrace returns a call stack it means there was a
       // revert.
-      return this.getStackTrace(evmCallStack)
+      return this.getStackTrace(evmCallStack, functionId)
     } else {
       return this.getStackTranceSimple(address, txHash, result, isInvalid)
     }
@@ -214,6 +214,7 @@ export default class Web3TraceProvider {
       this._contractsData.contractsData,
       bytecode
     )
+
     if (!contractData) {
       console.warn(`unknown contract address: ${address}.`)
       console.warn('Maybe you try to \'rm build/contracts/* && truffle compile\' for reset sourceMap.')
@@ -230,15 +231,22 @@ export default class Web3TraceProvider {
     )
 
     let sourceRange
-    let pc = result.error.data[txHash].program_counter
+    let pc = -1
+    if (result.error && result.error.data) {
+      pc = result.error.data[txHash].program_counter
+    } else {
+      const dataObj = {'message': `not supported data formart.`}
+      result.error = result.error ? result.error : {}
+      result.error.data = dataObj
+    }
     // Sometimes there is not a mapping for this pc (e.g. if the revert
     // actually happens in assembly).
     while (!sourceRange) {
       sourceRange = pcToSourceRange[pc]
       pc -= 1
-      if (pc <= 0) {
+      if (pc < 0) {
         console.warn(
-          `could not find matching sourceRange for structLog: ${result.error.data}`
+          `could not find matching sourceRange for structLog: ${JSON.stringify(result.error.data)}`
         )
         return null
       }
@@ -257,7 +265,7 @@ export default class Web3TraceProvider {
     return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
-  async getStackTrace(evmCallStack) {
+  async getStackTrace(evmCallStack, functionId) {
     const sourceRanges = []
     if (!this._contractsData) {
       this._contractsData = this.collectContractsData()

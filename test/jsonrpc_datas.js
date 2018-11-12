@@ -90,7 +90,7 @@ const revertResponseOfCreation = {
     message: 'VM Exception while processing transaction: revert',
     code: -32000,
     data: {
-      0xed1e09446747429b5a06e84a3ff65b9e1c8a09b03e060b1fbd6168f141992198: {
+      '0xed1e09446747429b5a06e84a3ff65b9e1c8a09b03e060b1fbd6168f141992198': {
         error: 'revert',
         program_counter: 138
       },
