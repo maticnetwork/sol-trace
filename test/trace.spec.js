@@ -2,9 +2,9 @@ import {getRevertTrace} from '../src/trace'
 import {expect} from 'chai'
 const traceTestData = require('./trace_test_data.json')
 
-describe('SourceMaps', () => {
-  describe('parseSourceMap', () => {
-    it('selecte to SumToLength', async() => {
+describe('trace.js', () => {
+  describe('getRevertTrace', () => {
+    it('success. capture opcall address', async() => {
       const traces = getRevertTrace(traceTestData.structLogs, traceTestData.startAddress)
       expect(traces).to.have.lengthOf(2)
       expect(traces[0].address).to.equal('0x9fbda871d559710256a2502a2517b794b482db40')
