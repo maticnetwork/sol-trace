@@ -1,17 +1,15 @@
-import glob from 'glob'
-import fs from 'fs'
 import utils from 'ethereumjs-util'
 
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
-import ArtifactLoader from './artifact_loader'
+import AssemblerInfoProvider from './assembler_info_provider'
 
 const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
     this.web3 = web3
     this.nextProvider = web3.currentProvider
-    this.artifactLoader = new ArtifactLoader()
+    this.assemblerInfoProvider = new AssemblerInfoProvider()
   }
 
   /**
@@ -209,13 +207,10 @@ export default class Web3TraceProvider {
 
   async getStackTranceSimple(address, txHash, result, isInvalid = false) {
     if (!this._contractsData) {
-      this._contractsData = this.artifactLoader.collectContractsData()
+      this._contractsData = this.assemblerInfoProvider.collectContractsData()
     }
     const bytecode = await this.getContractCode(address)
-    const contractData = this.getContractDataIfExists(
-      this._contractsData.contractsData,
-      bytecode
-    )
+    const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
 
     if (!contractData) {
       console.warn(`unknown contract address: ${address}.`)
@@ -270,7 +265,7 @@ export default class Web3TraceProvider {
   async getStackTrace(evmCallStack) {
     const sourceRanges = []
     if (!this._contractsData) {
-      this._contractsData = this.artifactLoader.collectContractsData()
+      this._contractsData = this.assemblerInfoProvider.collectContractsData()
     }
 
     for (let index = 0; index < evmCallStack.length; index++) {
@@ -283,10 +278,7 @@ export default class Web3TraceProvider {
       }
 
       const bytecode = await this.getContractCode(evmCallStackEntry.address)
-      const contractData = this.getContractDataIfExists(
-        this._contractsData.contractsData,
-        bytecode
-      )
+      const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
 
       if (!contractData) {
         const errMsg = isContractCreation
@@ -338,38 +330,6 @@ export default class Web3TraceProvider {
     }
 
     return '\n\nCould not determine stack trace for REVERT\n'
-  }
-
-  getContractDataIfExists(contractsData, bytecode) {
-    if (!bytecode.startsWith('0x')) {
-      throw new Error(`0x hex prefix missing: ${bytecode}`)
-    }
-
-    const contractData = contractsData.find(contractDataCandidate => {
-      const bytecodeRegex = this.bytecodeToBytecodeRegex(
-        contractDataCandidate.bytecode
-      )
-      const runtimeBytecodeRegex = this.bytecodeToBytecodeRegex(
-        contractDataCandidate.runtimeBytecode
-      )
-      if (
-        contractDataCandidate.bytecode.length === 2 ||
-        contractDataCandidate.runtimeBytecode.length === 2
-      ) {
-        return false
-      }
-
-      // We use that function to find by bytecode or runtimeBytecode. Those are quasi-random strings so
-      // collisions are practically impossible and it allows us to reuse that code
-      return (
-        bytecode === contractDataCandidate.bytecode ||
-        bytecode === contractDataCandidate.runtimeBytecode ||
-        new RegExp(`${bytecodeRegex}`, 'g').test(bytecode) ||
-        new RegExp(`${runtimeBytecodeRegex}`, 'g').test(bytecode)
-      )
-    })
-
-    return contractData
   }
 
   bytecodeToBytecodeRegex(bytecode) {

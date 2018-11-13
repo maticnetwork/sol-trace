@@ -1,11 +1,20 @@
 import glob from 'glob'
 import fs from 'fs'
 
-export default class ArtifactLoader {
+/**
+ * The AssemblerInfoProvider is manager of Contracts.json.
+ * This class provide contract sourceCode, bytecodes, sourceMap and something contract info.
+ */
+export default class AssemblerInfoProvider {
   constructor(fglob = 'build/contracts/**/*.json') {
     this.artifactsGlob = fglob
+    this.contractsData = []
   }
 
+  /**
+   * collect contracts anything datas.
+   * @return {{contractsData: Array, sourceCodes: any[], sources: (*|string)[]}|*}
+   */
   collectContractsData() {
     const artifactFileNames = glob.sync(this.artifactsGlob, {absolute: true})
     const contractsData = []
@@ -46,10 +55,49 @@ export default class ArtifactLoader {
     const sourceCodes = sources.map(source => {
       return fs.readFileSync(source.sourcePath).toString()
     })
-    return {
+
+    this.contractsData = {
       contractsData,
       sourceCodes,
       sources: sources.map(s => s.sourcePath)
     }
+    return this.contractsData
+  }
+
+  /**
+   * find and return contract datas that has same bytecode.
+   * @param bytecode
+   * @return {*}
+   */
+  getContractDataIfExists(bytecode) {
+    if (!bytecode.startsWith('0x')) {
+      throw new Error(`0x hex prefix missing: ${bytecode}`)
+    }
+
+    const contractData = this.contractsData.find(contractDataCandidate => {
+      const bytecodeRegex = this.bytecodeToBytecodeRegex(
+        contractDataCandidate.bytecode
+      )
+      const runtimeBytecodeRegex = this.bytecodeToBytecodeRegex(
+        contractDataCandidate.runtimeBytecode
+      )
+      if (
+        contractDataCandidate.bytecode.length === 2 ||
+        contractDataCandidate.runtimeBytecode.length === 2
+      ) {
+        return false
+      }
+
+      // We use that function to find by bytecode or runtimeBytecode. Those are quasi-random strings so
+      // collisions are practically impossible and it allows us to reuse that code
+      return (
+        bytecode === contractDataCandidate.bytecode ||
+        bytecode === contractDataCandidate.runtimeBytecode ||
+        new RegExp(`${bytecodeRegex}`, 'g').test(bytecode) ||
+        new RegExp(`${runtimeBytecodeRegex}`, 'g').test(bytecode)
+      )
+    })
+
+    return contractData
   }
 }
