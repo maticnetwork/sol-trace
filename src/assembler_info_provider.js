@@ -8,7 +8,6 @@ import fs from 'fs'
 export default class AssemblerInfoProvider {
   constructor(fglob = 'build/contracts/**/*.json') {
     this.artifactsGlob = fglob
-    this._contractsData = []
   }
 
   get sourceCodes() {
@@ -26,6 +25,7 @@ export default class AssemblerInfoProvider {
   get contractsData() {
     if (!this._contractsData) {
       const artifactFileNames = glob.sync(this.artifactsGlob, {absolute: true})
+
       let sources = []
       let datas = []
       artifactFileNames.forEach(artifactFileName => {
@@ -84,6 +84,8 @@ export default class AssemblerInfoProvider {
       throw new Error(`0x hex prefix missing: ${bytecode}`)
     }
 
+    console.log(bytecode)
+    console.log(this.contractsData)
     const contractData = this.contractsData.find(contractDataCandidate => {
       const bytecodeRegex = this.bytecodeToBytecodeRegex(
         contractDataCandidate.bytecode
@@ -109,5 +111,22 @@ export default class AssemblerInfoProvider {
     })
 
     return contractData
+  }
+
+  bytecodeToBytecodeRegex(bytecode) {
+    const bytecodeRegex = bytecode
+    // Library linking placeholder: __ConvertLib____________________________
+      .replace(/_.*_/, '.*')
+      // Last 86 characters is solidity compiler metadata that's different between compilations
+      .replace(/.{86}$/, '')
+      // Libraries contain their own address at the beginning of the code and it's impossible to know it in advance
+      .replace(
+        /^0x730000000000000000000000000000000000000000/,
+        '0x73........................................'
+      )
+    // HACK: Node regexes can't be longer that 32767 characters. Contracts bytecode can. We just truncate the regexes. It's safe in practice.
+    const MAX_REGEX_LENGTH = 32767
+    const truncatedBytecodeRegex = bytecodeRegex.slice(0, MAX_REGEX_LENGTH)
+    return truncatedBytecodeRegex
   }
 }
