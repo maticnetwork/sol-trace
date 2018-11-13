@@ -206,9 +206,6 @@ export default class Web3TraceProvider {
   }
 
   async getStackTranceSimple(address, txHash, result, isInvalid = false) {
-    if (!this._contractsData) {
-      this._contractsData = this.assemblerInfoProvider.collectContractsData()
-    }
     const bytecode = await this.getContractCode(address)
     const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
 
@@ -221,10 +218,10 @@ export default class Web3TraceProvider {
     const bytecodeHex = utils.stripHexPrefix(bytecode)
     const sourceMap = contractData.sourceMapRuntime
     const pcToSourceRange = parseSourceMap(
-      this._contractsData.sourceCodes,
+      this.assemblerInfoProvider.sourceCodes,
       sourceMap,
       bytecodeHex,
-      this._contractsData.sources
+      this.assemblerInfoProvider.sources
     )
 
     let sourceRange
@@ -264,9 +261,6 @@ export default class Web3TraceProvider {
 
   async getStackTrace(evmCallStack) {
     const sourceRanges = []
-    if (!this._contractsData) {
-      this._contractsData = this.assemblerInfoProvider.collectContractsData()
-    }
 
     for (let index = 0; index < evmCallStack.length; index++) {
       const evmCallStackEntry = evmCallStack[index]
@@ -293,10 +287,10 @@ export default class Web3TraceProvider {
         ? contractData.sourceMap
         : contractData.sourceMapRuntime
       const pcToSourceRange = parseSourceMap(
-        this._contractsData.sourceCodes,
+        this.assemblerInfoProvider.sourceCodes,
         sourceMap,
         bytecodeHex,
-        this._contractsData.sources
+        this.assemblerInfoProvider.sources
       )
 
       let sourceRange

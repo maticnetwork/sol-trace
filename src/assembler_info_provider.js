@@ -8,60 +8,70 @@ import fs from 'fs'
 export default class AssemblerInfoProvider {
   constructor(fglob = 'build/contracts/**/*.json') {
     this.artifactsGlob = fglob
-    this.contractsData = []
+    this._contractsData = []
+  }
+
+  get sourceCodes() {
+    return this.contractsData.sourceCodes
+  }
+
+  get sources() {
+    return this.contractsData.sources
   }
 
   /**
    * collect contracts anything datas.
    * @return {{contractsData: Array, sourceCodes: any[], sources: (*|string)[]}|*}
    */
-  collectContractsData() {
-    const artifactFileNames = glob.sync(this.artifactsGlob, {absolute: true})
-    const contractsData = []
-    let sources = []
-    artifactFileNames.forEach(artifactFileName => {
-      const artifact = JSON.parse(fs.readFileSync(artifactFileName).toString())
+  get contractsData() {
+    if (!this._contractsData) {
+      const artifactFileNames = glob.sync(this.artifactsGlob, {absolute: true})
+      let sources = []
+      let datas = []
+      artifactFileNames.forEach(artifactFileName => {
+        const artifact = JSON.parse(fs.readFileSync(artifactFileName).toString())
 
-      const correctPath = process.env.MODULE_RELATIVE_PATH || ''
-      // If the sourcePath starts with zeppelin, then prepend with the pwd and node_modules
-      if (new RegExp('^(open)?zeppelin-solidity').test(artifact.sourcePath)) {
-        artifact.sourcePath = process.env.PWD + '/' + correctPath + 'node_modules/' + artifact.sourcePath
-      }
-      sources.push({
-        artifactFileName,
-        id: artifact.ast.id,
-        sourcePath: artifact.sourcePath
+        const correctPath = process.env.MODULE_RELATIVE_PATH || ''
+        // If the sourcePath starts with zeppelin, then prepend with the pwd and node_modules
+        if (new RegExp('^(open)?zeppelin-solidity').test(artifact.sourcePath)) {
+          artifact.sourcePath = process.env.PWD + '/' + correctPath + 'node_modules/' + artifact.sourcePath
+        }
+        sources.push({
+          artifactFileName,
+          id: artifact.ast.id,
+          sourcePath: artifact.sourcePath
+        })
+
+        if (!artifact.bytecode) {
+          console.warn(
+            `${artifactFileName} doesn't contain bytecode. Skipping...`
+          )
+          return
+        }
+
+        const contractData = {
+          artifactFileName,
+          sourceCodes,
+          sources,
+          bytecode: artifact.bytecode,
+          sourceMap: artifact.sourceMap,
+          runtimeBytecode: artifact.deployedBytecode,
+          sourceMapRuntime: artifact.deployedSourceMap
+        }
+        datas.push(contractData)
+      })
+      sources = sources.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10))
+      const sourceCodes = sources.map(source => {
+        return fs.readFileSync(source.sourcePath).toString()
       })
 
-      if (!artifact.bytecode) {
-        console.warn(
-          `${artifactFileName} doesn't contain bytecode. Skipping...`
-        )
-        return
-      }
-
-      const contractData = {
-        artifactFileName,
+      this._contractsData = {
+        datas,
         sourceCodes,
-        sources,
-        bytecode: artifact.bytecode,
-        sourceMap: artifact.sourceMap,
-        runtimeBytecode: artifact.deployedBytecode,
-        sourceMapRuntime: artifact.deployedSourceMap
+        sources: sources.map(s => s.sourcePath)
       }
-      contractsData.push(contractData)
-    })
-    sources = sources.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10))
-    const sourceCodes = sources.map(source => {
-      return fs.readFileSync(source.sourcePath).toString()
-    })
-
-    this.contractsData = {
-      contractsData,
-      sourceCodes,
-      sources: sources.map(s => s.sourcePath)
     }
-    return this.contractsData
+    return this._contractsData
   }
 
   /**
