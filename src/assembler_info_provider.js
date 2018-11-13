@@ -83,10 +83,7 @@ export default class AssemblerInfoProvider {
     if (!bytecode.startsWith('0x')) {
       throw new Error(`0x hex prefix missing: ${bytecode}`)
     }
-
-    console.log(bytecode)
-    console.log(this.contractsData)
-    const contractData = this.contractsData.find(contractDataCandidate => {
+    const contractData = this.contractsData.datas.find(contractDataCandidate => {
       const bytecodeRegex = this.bytecodeToBytecodeRegex(
         contractDataCandidate.bytecode
       )

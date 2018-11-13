@@ -1,5 +1,6 @@
 import AssemblerInfoProvider from '../src/assembler_info_provider'
 import {expect} from 'chai'
+import PassManagerJSON from './resources/build/PassManager'
 
 describe('AssemlerInfoProvider', () => {
   describe('init', () => {
@@ -16,13 +17,26 @@ describe('AssemlerInfoProvider', () => {
       expect(aip.artifactsGlob).to.equal('./resource')
     })
   })
-  describe('contractsData', () => {
-    it('sources have 2 items.', async() => {
-      const aip = new AssemblerInfoProvider('test/resources/build/**/*.json')
-      const datas = aip.contractsData
-      expect(datas.sources).to.have.lengthOf(2)
-      expect(datas.sources[0]).to.have.string('EducationPass.sol')
-      expect(datas.sources[1]).to.have.string('PassManager.sol')
+  describe('test using json files', () => {
+    let aip
+    beforeEach(() => {
+      aip = new AssemblerInfoProvider('test/resources/build/**/*.json')
+    })
+    describe('contractsData', () => {
+      it('sources have 2 items.', async() => {
+        const datas = aip.contractsData
+        expect(datas.sources).to.have.lengthOf(2)
+        expect(datas.sources[0]).to.have.string('EducationPass.sol')
+        expect(datas.sources[1]).to.have.string('PassManager.sol')
+      })
+    })
+    describe('getContractDataIfExists', () => {
+      it('sources have 2 items.', async() => {
+        const bytecode = PassManagerJSON.deployedBytecode
+        const contractData = aip.getContractDataIfExists(bytecode)
+        expect(contractData).to.be.ok
+        expect(contractData.artifactFileName).to.have.string('PassManager.json')
+      })
     })
   })
 })

@@ -12,6 +12,7 @@
     "lint": "eslint src/**/*.js test/**/*.spec.js",
     "test": "mocha --require babel-core/register --require babel-polyfill --colors ./test/**/*.spec.js",
     "test:watch": "mocha --require babel-core/register --require babel-polyfill --colors -w ./test/**/*.spec.js",
+    "debug": "mocha debug --require babel-core/register --require babel-polyfill --colors ./test/**/*.spec.js",
     "prepublish": "npm run build"
   },
   "repository": {
