@@ -89,7 +89,7 @@ describe('Web3TraceProvider', function() {
       spy = sinon.spy(console, 'warn')
       stub = sinon.stub(provider.nextProvider, 'sendAsync')
       contractDataStub = sinon.stub(provider, 'getContractDataIfExists')
-      sinon.stub(provider, 'collectContractsData').returns(testContractJSON)
+      sinon.stub(provider.artifactLoader, 'collectContractsData').returns(testContractJSON)
       contractDataStub.returns(testContractJSON.contractsData[0])
       stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
         cb(null, [{}, {}])

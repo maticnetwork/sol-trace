@@ -4,12 +4,14 @@ import utils from 'ethereumjs-util'
 
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
+import ArtifactLoader from './artifact_loader'
 
 const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
     this.web3 = web3
     this.nextProvider = web3.currentProvider
+    this.artifactLoader = new ArtifactLoader()
   }
 
   /**
@@ -199,7 +201,7 @@ export default class Web3TraceProvider {
     if (evmCallStack.length > 0) {
       // if getRevertTrace returns a call stack it means there was a
       // revert.
-      return this.getStackTrace(evmCallStack, functionId)
+      return this.getStackTrace(evmCallStack)
     } else {
       return this.getStackTranceSimple(address, txHash, result, isInvalid)
     }
@@ -207,7 +209,7 @@ export default class Web3TraceProvider {
 
   async getStackTranceSimple(address, txHash, result, isInvalid = false) {
     if (!this._contractsData) {
-      this._contractsData = this.collectContractsData()
+      this._contractsData = this.artifactLoader.collectContractsData()
     }
     const bytecode = await this.getContractCode(address)
     const contractData = this.getContractDataIfExists(
@@ -265,10 +267,10 @@ export default class Web3TraceProvider {
     return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
-  async getStackTrace(evmCallStack, functionId) {
+  async getStackTrace(evmCallStack) {
     const sourceRanges = []
     if (!this._contractsData) {
-      this._contractsData = this.collectContractsData()
+      this._contractsData = this.artifactLoader.collectContractsData()
     }
 
     for (let index = 0; index < evmCallStack.length; index++) {
@@ -336,54 +338,6 @@ export default class Web3TraceProvider {
     }
 
     return '\n\nCould not determine stack trace for REVERT\n'
-  }
-
-  collectContractsData() {
-    const artifactsGlob = 'build/contracts/**/*.json'
-    const artifactFileNames = glob.sync(artifactsGlob, {absolute: true})
-    const contractsData = []
-    let sources = []
-    artifactFileNames.forEach(artifactFileName => {
-      const artifact = JSON.parse(fs.readFileSync(artifactFileName).toString())
-
-      const correctPath = process.env.MODULE_RELATIVE_PATH || ''
-      // If the sourcePath starts with zeppelin, then prepend with the pwd and node_modules
-      if (new RegExp('^(open)?zeppelin-solidity').test(artifact.sourcePath)) {
-        artifact.sourcePath = process.env.PWD + '/' + correctPath + 'node_modules/' + artifact.sourcePath
-      }
-      sources.push({
-        artifactFileName,
-        id: artifact.ast.id,
-        sourcePath: artifact.sourcePath
-      })
-
-      if (!artifact.bytecode) {
-        console.warn(
-          `${artifactFileName} doesn't contain bytecode. Skipping...`
-        )
-        return
-      }
-
-      const contractData = {
-        artifactFileName,
-        sourceCodes,
-        sources,
-        bytecode: artifact.bytecode,
-        sourceMap: artifact.sourceMap,
-        runtimeBytecode: artifact.deployedBytecode,
-        sourceMapRuntime: artifact.deployedSourceMap
-      }
-      contractsData.push(contractData)
-    })
-    sources = sources.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10))
-    const sourceCodes = sources.map(source => {
-      return fs.readFileSync(source.sourcePath).toString()
-    })
-    return {
-      contractsData,
-      sourceCodes,
-      sources: sources.map(s => s.sourcePath)
-    }
   }
 
   getContractDataIfExists(contractsData, bytecode) {
