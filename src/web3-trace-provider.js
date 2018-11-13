@@ -184,7 +184,7 @@ export default class Web3TraceProvider {
     })
   }
 
-  async recordTxTrace(address, txHash, result, isInvalid = false) {
+  async recordTxTrace(address, txHash, result, functionId = '', isInvalid = false) {
     address = !address || address === '0x0'
       ? constants.NEW_CONTRACT
       : address
@@ -199,13 +199,13 @@ export default class Web3TraceProvider {
     if (evmCallStack.length > 0) {
       // if getRevertTrace returns a call stack it means there was a
       // revert.
-      return this.getStackTrace(evmCallStack)
+      return this.getStackTrace(evmCallStack, functionId)
     } else {
-      return this.getStackTranceSimple(address, txHash, result, isInvalid)
+      return this.getStackTranceSimple(address, txHash, result, functionId, isInvalid)
     }
   }
 
-  async getStackTranceSimple(address, txHash, result, isInvalid = false) {
+  async getStackTranceSimple(address, txHash, result, functionId = '', isInvalid = false) {
     const bytecode = await this.getContractCode(address)
     const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
 
@@ -259,7 +259,7 @@ export default class Web3TraceProvider {
     return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
-  async getStackTrace(evmCallStack) {
+  async getStackTrace(evmCallStack, functionId) {
     const sourceRanges = []
 
     for (let index = 0; index < evmCallStack.length; index++) {

@@ -83,7 +83,7 @@ export default class AssemblerInfoProvider {
     if (!bytecode.startsWith('0x')) {
       throw new Error(`0x hex prefix missing: ${bytecode}`)
     }
-    const contractData = this.contractsData.datas.find(contractDataCandidate => {
+    return this.contractsData.datas.find(contractDataCandidate => {
       const bytecodeRegex = this.bytecodeToBytecodeRegex(
         contractDataCandidate.bytecode
       )
@@ -106,8 +106,6 @@ export default class AssemblerInfoProvider {
         new RegExp(`${runtimeBytecodeRegex}`, 'g').test(bytecode)
       )
     })
-
-    return contractData
   }
 
   bytecodeToBytecodeRegex(bytecode) {
@@ -123,7 +121,6 @@ export default class AssemblerInfoProvider {
       )
     // HACK: Node regexes can't be longer that 32767 characters. Contracts bytecode can. We just truncate the regexes. It's safe in practice.
     const MAX_REGEX_LENGTH = 32767
-    const truncatedBytecodeRegex = bytecodeRegex.slice(0, MAX_REGEX_LENGTH)
-    return truncatedBytecodeRegex
+    return bytecodeRegex.slice(0, MAX_REGEX_LENGTH)
   }
 }

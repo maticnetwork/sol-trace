@@ -7,7 +7,8 @@ import {
   gethRevertReceiptCreationResponse,
   gethRevertReceiptResponse,
   gethRevertResponseForEthCall,
-  getReceiptPayload, invalidResponseForEthCall,
+  getReceiptPayload,
+  invalidResponseForEthCall,
   invalidResponseForSnedTransaction,
   oldVerResponse,
   payload,
@@ -18,10 +19,14 @@ import {
   traceErrorResponse
 } from './jsonrpc_datas'
 import utils from 'ethereumjs-util'
+import {expect} from 'chai'
+import AssemblerInfoProvider from '../src/assembler_info_provider'
 
 const sinon = require('sinon')
 const assert = require('assert')
 const testContractJSON = require('./contractsData')
+const evmCallStacks = require('./resources/evm_callstack')
+
 const copy = (obj) => JSON.parse(JSON.stringify(obj))
 const prosmify = (provider, payload) => {
   return new Promise((resolve, reject) => {
@@ -262,6 +267,32 @@ describe('Web3TraceProvider', function() {
           spyGetStackTranceSimple.restore()
         }
       })
+    })
+  })
+
+  describe('getStackTrace', () => {
+    const matchMethod = (method) => {
+      return sinon.match(payload => payload.method === method)
+    }
+    const provider = targetProvider()
+    let stub
+    beforeEach(() => {
+      stub = sinon.stub(provider.nextProvider, 'sendAsync')
+      const datas = new AssemblerInfoProvider('test/resources/build2/**/*.json').contractsData
+      sinon.stub(provider.assemblerInfoProvider, 'contractsData').get(() => datas)
+      const passManagerBytecodes = datas.datas[1].runtimeBytecode
+      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: passManagerBytecodes}))
+      stub.callsFake((payload, cb) => cb(null, ''))
+    })
+    afterEach(() => {
+      stub.restore()
+      sinon.restore()
+    })
+    it('success.', async() => {
+      const trace = await provider.getStackTrace(evmCallStacks, '9x12341234')
+      expect(trace).to.have.string('Stack trace for REVERT:')
+      expect(trace).to.have.string('Ownable.sol:36:4')
+      // expect(trace).to.have.string('EducationPass.sol:23')
     })
   })
 })
