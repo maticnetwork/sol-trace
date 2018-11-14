@@ -64,8 +64,21 @@ export function isEndOpcode(op) {
   )
 }
 
+/**
+ * convert stack data to address data format.
+ * almost stack data is 32byte, so remove 0 that be filled.
+ *
+ * @param stackEntry
+ * @return address
+ */
 export function getAddressFromStackEntry(stackEntry) {
-  return stackEntry
+  if (stackEntry.startsWith('0x')) {
+    stackEntry = stackEntry.slice(2)
+  }
+  if (stackEntry.length > 40) {
+    stackEntry = stackEntry.slice(stackEntry.length - 40)
+  }
+  return '0x' + stackEntry
 }
 
 const isPush = inst => inst >= constants.PUSH1 && inst <= constants.PUSH32

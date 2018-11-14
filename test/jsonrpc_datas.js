@@ -90,7 +90,7 @@ const revertResponseOfCreation = {
     message: 'VM Exception while processing transaction: revert',
     code: -32000,
     data: {
-      0xed1e09446747429b5a06e84a3ff65b9e1c8a09b03e060b1fbd6168f141992198: {
+      '0xed1e09446747429b5a06e84a3ff65b9e1c8a09b03e060b1fbd6168f141992198': {
         error: 'revert',
         program_counter: 138
       },
@@ -211,6 +211,24 @@ const gethRevertReceiptCreationResponse = {
   }
 }
 
+const educationPassRevertResult = {
+  'id': 32,
+  'jsonrpc': '2.0',
+  'result': '0x02ced131074d99fbd576b205f8d3cfb82c4852f2327d37abd39b2d702aa78557',
+  'error': {
+    'message': 'VM Exception while processing transaction: revert',
+    'code': -32000,
+    'data': {
+      '0x02ced131074d99fbd576b205f8d3cfb82c4852f2327d37abd39b2d702aa78557': {
+        'error': 'revert',
+        'program_counter': 3208
+      },
+      'stack': 'c: VM Exception while processing transaction: revert\n    at Function.c.f...',
+      'name': 'c'
+    }
+  }
+}
+
 const getCodeMock = (mock) => {
   return (address) => {
     const payload = {
@@ -241,5 +259,6 @@ export {
   gethRevertReceiptCreationResponse,
   invalidResponseForSnedTransaction,
   invalidResponseForEthCall,
+  educationPassRevertResult,
   getCodeMock
 }

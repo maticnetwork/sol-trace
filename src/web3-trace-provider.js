@@ -1,15 +1,16 @@
-import glob from 'glob'
-import fs from 'fs'
 import utils from 'ethereumjs-util'
 
+import AbiFunctions from 'abi-decode-functions'
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
+import AssemblerInfoProvider from './assembler_info_provider'
 
 const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
     this.web3 = web3
     this.nextProvider = web3.currentProvider
+    this.assemblerInfoProvider = new AssemblerInfoProvider()
   }
 
   /**
@@ -32,7 +33,7 @@ export default class Web3TraceProvider {
           if (utils.toBuffer(txHash).length === 32) {
             const toAddress = txData.to
             // record tx trace
-            this.recordTxTrace(toAddress, txHash, result, this._isInvalidOpcode(result))
+            this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload), this._isInvalidOpcode(result))
               .then(traceResult => {
                 result.error.message += traceResult
                 cb(err, result)
@@ -52,7 +53,7 @@ export default class Web3TraceProvider {
           // record tx trace
           const toAddress = result.result.to
           const txHash = result.result.transactionHash
-          this.recordTxTrace(toAddress, txHash, result)
+          this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload))
             .then(traceResult => {
               console.warn(traceResult)
               cb(err, result)
@@ -184,7 +185,7 @@ export default class Web3TraceProvider {
     })
   }
 
-  async recordTxTrace(address, txHash, result, isInvalid = false) {
+  async recordTxTrace(address, txHash, result, functionId, isInvalid = false) {
     address = !address || address === '0x0'
       ? constants.NEW_CONTRACT
       : address
@@ -196,7 +197,18 @@ export default class Web3TraceProvider {
 
     const logs = (trace === undefined) ? [] : trace.structLogs
     const evmCallStack = getRevertTrace(logs, address)
-    if (evmCallStack.length > 0) {
+    const opcodes = await this.getContractCode(address)
+    const decoder = new AbiFunctions(opcodes)
+    // create function call point stack
+    const startPointStack = {
+      address: address,
+      structLog: {
+        pc: decoder.findProgramCounter(functionId),
+        type: 'call start point'
+      }
+    }
+    evmCallStack.unshift(startPointStack)
+    if (evmCallStack.length > 1) {
       // if getRevertTrace returns a call stack it means there was a
       // revert.
       return this.getStackTrace(evmCallStack)
@@ -206,14 +218,9 @@ export default class Web3TraceProvider {
   }
 
   async getStackTranceSimple(address, txHash, result, isInvalid = false) {
-    if (!this._contractsData) {
-      this._contractsData = this.collectContractsData()
-    }
     const bytecode = await this.getContractCode(address)
-    const contractData = this.getContractDataIfExists(
-      this._contractsData.contractsData,
-      bytecode
-    )
+    const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
+
     if (!contractData) {
       console.warn(`unknown contract address: ${address}.`)
       console.warn('Maybe you try to \'rm build/contracts/* && truffle compile\' for reset sourceMap.')
@@ -223,22 +230,29 @@ export default class Web3TraceProvider {
     const bytecodeHex = utils.stripHexPrefix(bytecode)
     const sourceMap = contractData.sourceMapRuntime
     const pcToSourceRange = parseSourceMap(
-      this._contractsData.sourceCodes,
+      this.assemblerInfoProvider.sourceCodes,
       sourceMap,
       bytecodeHex,
-      this._contractsData.sources
+      this.assemblerInfoProvider.sources
     )
 
     let sourceRange
-    let pc = result.error.data[txHash].program_counter
+    let pc = -1
+    if (result.error && result.error.data) {
+      pc = result.error.data[txHash].program_counter
+    } else {
+      const dataObj = {'message': `not supported data formart.`}
+      result.error = result.error ? result.error : {}
+      result.error.data = dataObj
+    }
     // Sometimes there is not a mapping for this pc (e.g. if the revert
     // actually happens in assembly).
     while (!sourceRange) {
       sourceRange = pcToSourceRange[pc]
       pc -= 1
-      if (pc <= 0) {
+      if (pc < 0) {
         console.warn(
-          `could not find matching sourceRange for structLog: ${result.error.data}`
+          `could not find matching sourceRange for structLog: ${JSON.stringify(result.error.data)}`
         )
         return null
       }
@@ -257,11 +271,8 @@ export default class Web3TraceProvider {
     return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
-  async getStackTrace(evmCallStack) {
+  async getStackTrace(evmCallStack, functionId) {
     const sourceRanges = []
-    if (!this._contractsData) {
-      this._contractsData = this.collectContractsData()
-    }
 
     for (let index = 0; index < evmCallStack.length; index++) {
       const evmCallStackEntry = evmCallStack[index]
@@ -273,10 +284,7 @@ export default class Web3TraceProvider {
       }
 
       const bytecode = await this.getContractCode(evmCallStackEntry.address)
-      const contractData = this.getContractDataIfExists(
-        this._contractsData.contractsData,
-        bytecode
-      )
+      const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
 
       if (!contractData) {
         const errMsg = isContractCreation
@@ -291,10 +299,10 @@ export default class Web3TraceProvider {
         ? contractData.sourceMap
         : contractData.sourceMapRuntime
       const pcToSourceRange = parseSourceMap(
-        this._contractsData.sourceCodes,
+        this.assemblerInfoProvider.sourceCodes,
         sourceMap,
         bytecodeHex,
-        this._contractsData.sources
+        this.assemblerInfoProvider.sources
       )
 
       let sourceRange
@@ -310,10 +318,12 @@ export default class Web3TraceProvider {
           console.warn(
             `could not find matching sourceRange for structLog: ${evmCallStackEntry.structLog}`
           )
-          continue
+          break
         }
       }
-      sourceRanges.push(sourceRange)
+      if (sourceRange) {
+        sourceRanges.push(sourceRange)
+      }
     }
 
     if (sourceRanges.length > 0) {
@@ -330,100 +340,16 @@ export default class Web3TraceProvider {
     return '\n\nCould not determine stack trace for REVERT\n'
   }
 
-  collectContractsData() {
-    const artifactsGlob = 'build/contracts/**/*.json'
-    const artifactFileNames = glob.sync(artifactsGlob, {absolute: true})
-    const contractsData = []
-    let sources = []
-    artifactFileNames.forEach(artifactFileName => {
-      const artifact = JSON.parse(fs.readFileSync(artifactFileName).toString())
-
-      const correctPath = process.env.MODULE_RELATIVE_PATH || ''
-      // If the sourcePath starts with zeppelin, then prepend with the pwd and node_modules
-      if (new RegExp('^(open)?zeppelin-solidity').test(artifact.sourcePath)) {
-        artifact.sourcePath = process.env.PWD + '/' + correctPath + 'node_modules/' + artifact.sourcePath
-      }
-      sources.push({
-        artifactFileName,
-        id: artifact.ast.id,
-        sourcePath: artifact.sourcePath
-      })
-
-      if (!artifact.bytecode) {
-        console.warn(
-          `${artifactFileName} doesn't contain bytecode. Skipping...`
-        )
-        return
-      }
-
-      const contractData = {
-        artifactFileName,
-        sourceCodes,
-        sources,
-        bytecode: artifact.bytecode,
-        sourceMap: artifact.sourceMap,
-        runtimeBytecode: artifact.deployedBytecode,
-        sourceMapRuntime: artifact.deployedSourceMap
-      }
-      contractsData.push(contractData)
-    })
-    sources = sources.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10))
-    const sourceCodes = sources.map(source => {
-      return fs.readFileSync(source.sourcePath).toString()
-    })
-    return {
-      contractsData,
-      sourceCodes,
-      sources: sources.map(s => s.sourcePath)
+  /**
+   * extract function id from transaction data part.
+   * @param payload
+   * @return {*}
+   */
+  getFunctionId(payload) {
+    let funcId = payload.params[0].data
+    if (funcId && funcId.length > 10) {
+      funcId = funcId.slice(0, 10)
     }
-  }
-
-  getContractDataIfExists(contractsData, bytecode) {
-    if (!bytecode.startsWith('0x')) {
-      throw new Error(`0x hex prefix missing: ${bytecode}`)
-    }
-
-    const contractData = contractsData.find(contractDataCandidate => {
-      const bytecodeRegex = this.bytecodeToBytecodeRegex(
-        contractDataCandidate.bytecode
-      )
-      const runtimeBytecodeRegex = this.bytecodeToBytecodeRegex(
-        contractDataCandidate.runtimeBytecode
-      )
-      if (
-        contractDataCandidate.bytecode.length === 2 ||
-        contractDataCandidate.runtimeBytecode.length === 2
-      ) {
-        return false
-      }
-
-      // We use that function to find by bytecode or runtimeBytecode. Those are quasi-random strings so
-      // collisions are practically impossible and it allows us to reuse that code
-      return (
-        bytecode === contractDataCandidate.bytecode ||
-        bytecode === contractDataCandidate.runtimeBytecode ||
-        new RegExp(`${bytecodeRegex}`, 'g').test(bytecode) ||
-        new RegExp(`${runtimeBytecodeRegex}`, 'g').test(bytecode)
-      )
-    })
-
-    return contractData
-  }
-
-  bytecodeToBytecodeRegex(bytecode) {
-    const bytecodeRegex = bytecode
-    // Library linking placeholder: __ConvertLib____________________________
-      .replace(/_.*_/, '.*')
-      // Last 86 characters is solidity compiler metadata that's different between compilations
-      .replace(/.{86}$/, '')
-      // Libraries contain their own address at the beginning of the code and it's impossible to know it in advance
-      .replace(
-        /^0x730000000000000000000000000000000000000000/,
-        '0x73........................................'
-      )
-    // HACK: Node regexes can't be longer that 32767 characters. Contracts bytecode can. We just truncate the regexes. It's safe in practice.
-    const MAX_REGEX_LENGTH = 32767
-    const truncatedBytecodeRegex = bytecodeRegex.slice(0, MAX_REGEX_LENGTH)
-    return truncatedBytecodeRegex
+    return funcId
   }
 }
