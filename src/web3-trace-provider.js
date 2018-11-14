@@ -195,7 +195,6 @@ export default class Web3TraceProvider {
       disableStorage: true
     })
 
-    console.log(JSON.stringify(trace))
     const logs = (trace === undefined) ? [] : trace.structLogs
     const evmCallStack = getRevertTrace(logs, address)
     const opcodes = await this.getContractCode(address)
