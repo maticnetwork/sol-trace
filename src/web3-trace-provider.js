@@ -1,5 +1,6 @@
 import utils from 'ethereumjs-util'
 
+import AbiFunctions from 'abi-decode-functions'
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
 import AssemblerInfoProvider from './assembler_info_provider'
@@ -32,7 +33,7 @@ export default class Web3TraceProvider {
           if (utils.toBuffer(txHash).length === 32) {
             const toAddress = txData.to
             // record tx trace
-            this.recordTxTrace(toAddress, txHash, result, this._isInvalidOpcode(result))
+            this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload), this._isInvalidOpcode(result))
               .then(traceResult => {
                 result.error.message += traceResult
                 cb(err, result)
@@ -52,7 +53,7 @@ export default class Web3TraceProvider {
           // record tx trace
           const toAddress = result.result.to
           const txHash = result.result.transactionHash
-          this.recordTxTrace(toAddress, txHash, result)
+          this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload))
             .then(traceResult => {
               console.warn(traceResult)
               cb(err, result)
@@ -184,7 +185,7 @@ export default class Web3TraceProvider {
     })
   }
 
-  async recordTxTrace(address, txHash, result, functionId = '', isInvalid = false) {
+  async recordTxTrace(address, txHash, result, functionId, isInvalid = false) {
     address = !address || address === '0x0'
       ? constants.NEW_CONTRACT
       : address
@@ -194,18 +195,30 @@ export default class Web3TraceProvider {
       disableStorage: true
     })
 
+    console.log(JSON.stringify(trace))
     const logs = (trace === undefined) ? [] : trace.structLogs
     const evmCallStack = getRevertTrace(logs, address)
-    if (evmCallStack.length > 0) {
+    const opcodes = await this.getContractCode(address)
+    const decoder = new AbiFunctions(opcodes)
+    // create function call point stack
+    const startPointStack = {
+      address: address,
+      structLog: {
+        pc: decoder.findProgramCounter(functionId),
+        type: 'call start point'
+      }
+    }
+    evmCallStack.unshift(startPointStack)
+    if (evmCallStack.length > 1) {
       // if getRevertTrace returns a call stack it means there was a
       // revert.
-      return this.getStackTrace(evmCallStack, functionId)
+      return this.getStackTrace(evmCallStack)
     } else {
-      return this.getStackTranceSimple(address, txHash, result, functionId, isInvalid)
+      return this.getStackTranceSimple(address, txHash, result, isInvalid)
     }
   }
 
-  async getStackTranceSimple(address, txHash, result, functionId = '', isInvalid = false) {
+  async getStackTranceSimple(address, txHash, result, isInvalid = false) {
     const bytecode = await this.getContractCode(address)
     const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
 
@@ -306,10 +319,12 @@ export default class Web3TraceProvider {
           console.warn(
             `could not find matching sourceRange for structLog: ${evmCallStackEntry.structLog}`
           )
-          continue
+          break
         }
       }
-      sourceRanges.push(sourceRange)
+      if (sourceRange) {
+        sourceRanges.push(sourceRange)
+      }
     }
 
     if (sourceRanges.length > 0) {
@@ -324,5 +339,18 @@ export default class Web3TraceProvider {
     }
 
     return '\n\nCould not determine stack trace for REVERT\n'
+  }
+
+  /**
+   * extract function id from transaction data part.
+   * @param payload
+   * @return {*}
+   */
+  getFunctionId(payload) {
+    let funcId = payload.params[0].data
+    if (funcId && funcId.length > 10) {
+      funcId = funcId.slice(0, 10)
+    }
+    return funcId
   }
 }
