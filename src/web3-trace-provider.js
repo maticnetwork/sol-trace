@@ -185,6 +185,15 @@ export default class Web3TraceProvider {
     })
   }
 
+  /**
+   * recording trace that start point, call and revert opcode point from debug trace.
+   * @param address
+   * @param txHash
+   * @param result
+   * @param functionId
+   * @param isInvalid
+   * @return {Promise<*>}
+   */
   async recordTxTrace(address, txHash, result, functionId, isInvalid = false) {
     address = !address || address === '0x0'
       ? constants.NEW_CONTRACT
@@ -213,11 +222,19 @@ export default class Web3TraceProvider {
       // revert.
       return this.getStackTrace(evmCallStack)
     } else {
-      return this.getStackTranceSimple(address, txHash, result, isInvalid)
+      return this.getStackTraceSimple(address, txHash, result, isInvalid)
     }
   }
 
-  async getStackTranceSimple(address, txHash, result, isInvalid = false) {
+  /**
+   * trace info convert to stack trace info that is using assembly opcodes.
+   * @param address
+   * @param txHash
+   * @param result
+   * @param isInvalid
+   * @return {Promise<*>}
+   */
+  async getStackTraceSimple(address, txHash, result, isInvalid = false) {
     const bytecode = await this.getContractCode(address)
     const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
 
@@ -271,6 +288,12 @@ export default class Web3TraceProvider {
     return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
+  /**
+   * trace info convert to stack trace info that is using call stack.
+   * @param evmCallStack
+   * @param functionId
+   * @return {Promise<string>}
+   */
   async getStackTrace(evmCallStack, functionId) {
     const sourceRanges = []
 
