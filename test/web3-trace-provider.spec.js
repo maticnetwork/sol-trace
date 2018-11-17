@@ -26,6 +26,7 @@ const sinon = require('sinon')
 const assert = require('assert')
 const testContractJSON = require('./contractsData')
 const evmCallStacks = require('./resources/evm_callstack')
+const simpleRevertDebugTraceJSON = require('./resources/sumtoLengthCallStack')
 const educationPassDebugTraceJSON = require('./resources/education_debug_trace')
 
 const copy = (obj) => JSON.parse(JSON.stringify(obj))
@@ -86,12 +87,12 @@ describe('Web3TraceProvider', function() {
     })
   })
   describe('JSON-RPC', () => {
-    const provider = targetProvider()
-    let spy, stub, contractDataStub
+    let provider, spy, stub, contractDataStub
     const matchMethod = (method) => {
       return sinon.match(payload => payload.method === method)
     }
     beforeEach(() => {
+      provider = targetProvider()
       spy = sinon.spy(console, 'warn')
       stub = sinon.stub(provider.nextProvider, 'sendAsync')
       contractDataStub = sinon.stub(provider.assemblerInfoProvider, 'getContractDataIfExists')
@@ -123,14 +124,15 @@ describe('Web3TraceProvider', function() {
         assert.equal('0x2c2b9c9a4a25e24b174f26114e8926a9f2128fe4', stub.firstCall.args[0].params[0].to)
         assert.equal(false, spy.calledWith('Could not trace REVERT. maybe legacy node.'))
       })
-      it('eth_sendTransaction', async() => {
+      it('eth_sendTransaction result is REVERT', async() => {
         stub.withArgs(matchMethod('eth_sendTransaction'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, revertResponseForSendTransaction)
         })
+        sinon.stub(provider, 'extractEvmCallStack').returns(simpleRevertDebugTraceJSON)
         await prosmify(provider, payload)
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-        assert.equal(4, spyCalledMethods.length)
-        assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode'])
+        assert.equal(3, spyCalledMethods.length)
+        assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode'])
           , JSON.stringify(spyCalledMethods))
         assert.equal('0x25e2028b4459864af2f7bfeccfa387ff2d9922b2da840687a9ae7233fa2c72ba', stub.getCall(1).args[0].params[0])
       })
@@ -142,8 +144,8 @@ describe('Web3TraceProvider', function() {
         try {
           await prosmify(provider, callPayload)
           const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-          assert.equal(4, stub.callCount)
-          assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode'])
+          assert.equal(stub.callCount, 3)
+          assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode'])
             , JSON.stringify(spyCalledMethods))
           assert.equal('0x4edb02794d2e5d5c4c8c71bd033990158f5839bb9ab2e6f09c241aec16a0c008', stub.getCall(1).args[0].params[0])
           assert.equal(spyGetStackTraceSimple.called, true)
@@ -171,8 +173,8 @@ describe('Web3TraceProvider', function() {
         })
         await prosmify(provider, callPayload)
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-        assert.equal(stub.callCount, 4)
-        assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode'])
+        assert.equal(stub.callCount, 3)
+        assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode'])
           , JSON.stringify(spyCalledMethods))
       })
       it('revert creation transaction.', async() => {
@@ -184,9 +186,9 @@ describe('Web3TraceProvider', function() {
         try {
           await prosmify(provider, createContractPayload)
           const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-          assert.equal(4, stub.callCount)
+          assert.equal(stub.callCount, 3)
           assert.equal(spyGetStackTraceSimple.getCall(0).args[0], 'NEW_CONTRACT')
-          assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode'])
+          assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode'])
             , JSON.stringify(spyCalledMethods))
         } finally {
           spyGetStackTraceSimple.restore()
@@ -200,8 +202,8 @@ describe('Web3TraceProvider', function() {
         try {
           await prosmify(provider, payload)
           const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-          assert.equal(4, stub.callCount)
-          assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode'])
+          assert.equal(stub.callCount, 3)
+          assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode'])
             , JSON.stringify(spyCalledMethods))
           assert.equal(spyGetStackTraceSimple.called, true)
           assert.equal(spyGetStackTraceSimple.firstCall.args[3], true)
@@ -217,8 +219,8 @@ describe('Web3TraceProvider', function() {
         try {
           await prosmify(provider, callPayload)
           const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-          assert.equal(4, stub.callCount)
-          assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode'])
+          assert.equal(stub.callCount, 3)
+          assert.equal(JSON.stringify(['eth_call', 'debug_traceTransaction', 'eth_getCode'])
             , JSON.stringify(spyCalledMethods))
           assert.equal(spyGetStackTraceSimple.called, true)
           assert.equal(spyGetStackTraceSimple.firstCall.args[3], true)
@@ -245,8 +247,8 @@ describe('Web3TraceProvider', function() {
         })
         await prosmify(provider, getReceiptPayload)
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-        assert.equal(4, stub.callCount)
-        assert.equal(JSON.stringify(spyCalledMethods), JSON.stringify(['eth_getTransactionReceipt', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode']))
+        assert.equal(stub.callCount, 3)
+        assert.equal(JSON.stringify(spyCalledMethods), JSON.stringify(['eth_getTransactionReceipt', 'debug_traceTransaction', 'eth_getCode']))
         assert.equal(stub.getCall(1).args[0].params[0], '0x43cc231fac6c0b8cc341328aeb727efb77b860508c03502376cd52ec2eee75da')
         assert.equal(stub.getCall(1).args[0].id, 179)
       })
@@ -260,8 +262,8 @@ describe('Web3TraceProvider', function() {
           await prosmify(provider, getReceiptPayload)
           const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
           assert.equal(spyGetStackTraceSimple.getCall(0).args[0], 'NEW_CONTRACT')
-          assert.equal(4, stub.callCount)
-          assert.equal(JSON.stringify(spyCalledMethods), JSON.stringify(['eth_getTransactionReceipt', 'debug_traceTransaction', 'eth_getCode', 'eth_getCode']))
+          assert.equal(stub.callCount, 3)
+          assert.equal(JSON.stringify(spyCalledMethods), JSON.stringify(['eth_getTransactionReceipt', 'debug_traceTransaction', 'eth_getCode']))
           assert.equal(stub.getCall(1).args[0].params[0], '0x39b37a0f46525d1c233a461e97e3df398347c93e811a64e6aad150422eb9d0d5')
           assert.equal(stub.getCall(1).args[0].id, 22)
         } finally {

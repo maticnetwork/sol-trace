@@ -11,6 +11,7 @@ export default class Web3TraceProvider {
     this.web3 = web3
     this.nextProvider = web3.currentProvider
     this.assemblerInfoProvider = new AssemblerInfoProvider()
+    this.contractCodes = {}
   }
 
   /**
@@ -142,6 +143,9 @@ export default class Web3TraceProvider {
    */
   getContractCode(address) {
     return new Promise((resolve, reject) => {
+      if (this.contractCodes[address]) {
+        return resolve(this.contractCodes[address])
+      }
       this.nextProvider.sendAsync(
         {
           id: new Date().getTime(),
@@ -152,7 +156,8 @@ export default class Web3TraceProvider {
           if (err) {
             reject(err)
           } else {
-            resolve(result.result)
+            this.contractCodes[address] = result.result
+            resolve(this.contractCodes[address])
           }
         }
       )
@@ -185,6 +190,11 @@ export default class Web3TraceProvider {
     })
   }
 
+  extractEvmCallStack(trace, address) {
+    const logs = (trace === undefined) ? [] : trace.structLogs
+    return getRevertTrace(logs, address)
+  }
+
   /**
    * recording trace that start point, call and revert opcode point from debug trace.
    * @param address
@@ -204,8 +214,7 @@ export default class Web3TraceProvider {
       disableStorage: true
     })
 
-    const logs = (trace === undefined) ? [] : trace.structLogs
-    const evmCallStack = getRevertTrace(logs, address)
+    const evmCallStack = this.extractEvmCallStack(trace, address)
     const opcodes = await this.getContractCode(address)
     const decoder = new AbiFunctions(opcodes)
     // create function call point stack
