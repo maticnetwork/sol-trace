@@ -43,8 +43,7 @@ export default class Web3TraceProvider {
                 cb(traceError, result)
               })
           } else {
-            console.warn('Could not trace REVERT / invalid opcode. maybe legacy node.')
-            cb(err, result)
+            cb(new Error('Could not trace REVERT / invalid opcode. maybe legacy node.'), result)
           }
         } else if (this._isGethEthCallRevertResponse(payload.method, result)) {
           const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
@@ -231,7 +230,7 @@ export default class Web3TraceProvider {
       // revert.
       return this.getStackTrace(evmCallStack)
     } else {
-      return this.getStackTraceSimple(address, txHash, result, isInvalid)
+      return this.getStackTraceSimple(address, txHash, result, isInvalid, evmCallStack)
     }
   }
 
@@ -243,58 +242,22 @@ export default class Web3TraceProvider {
    * @param isInvalid
    * @return {Promise<*>}
    */
-  async getStackTraceSimple(address, txHash, result, isInvalid = false) {
-    const bytecode = await this.getContractCode(address)
-    const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
-
-    if (!contractData) {
-      console.warn(`unknown contract address: ${address}.`)
-      console.warn('Maybe you try to \'rm build/contracts/* && truffle compile\' for reset sourceMap.')
-      return null
-    }
-
-    const bytecodeHex = utils.stripHexPrefix(bytecode)
-    const sourceMap = contractData.sourceMapRuntime
-    const pcToSourceRange = parseSourceMap(
-      this.assemblerInfoProvider.sourceCodes,
-      sourceMap,
-      bytecodeHex,
-      this.assemblerInfoProvider.sources
-    )
-
-    let sourceRange
+  async getStackTraceSimple(address, txHash, result, isInvalid, evmCallStack) {
     let pc = -1
     if (result.error && result.error.data) {
       pc = result.error.data[txHash].program_counter
-    } else {
-      const dataObj = {'message': `not supported data formart.`}
-      result.error = result.error ? result.error : {}
-      result.error.data = dataObj
-    }
-    // Sometimes there is not a mapping for this pc (e.g. if the revert
-    // actually happens in assembly).
-    while (!sourceRange) {
-      sourceRange = pcToSourceRange[pc]
-      pc -= 1
-      if (pc < 0) {
-        console.warn(
-          `could not find matching sourceRange for structLog: ${JSON.stringify(result.error.data)}`
-        )
-        return null
+      const errorStack = {
+        address: address,
+        structLog: {
+          pc: pc,
+          type: `call ${isInvalid ? 'invalid' : 'revert'} point`
+        }
       }
+      evmCallStack.push(errorStack)
+    } else {
+      console.warn('not supported data formart.')
     }
-
-    const errorType = isInvalid ? 'invalid opcode' : 'REVERT'
-    if (sourceRange) {
-      const traceArray = [
-        sourceRange.fileName,
-        sourceRange.location.start.line,
-        sourceRange.location.start.column
-      ].join(':')
-      return `\n\nStack trace for ${errorType}:\n${traceArray}\n`
-    }
-
-    return `\n\nCould not determine stack trace for ${errorType}\n`
+    return this.getStackTrace(evmCallStack)
   }
 
   /**
@@ -347,8 +310,9 @@ export default class Web3TraceProvider {
         sourceRange = pcToSourceRange[pc]
         pc -= 1
         if (pc <= 0) {
+          const msgParams = ['pc', 'op', 'type'].map((key) => `${key}: ${evmCallStackEntry.structLog[key]}`)
           console.warn(
-            `could not find matching sourceRange for structLog: ${evmCallStackEntry.structLog}`
+            `could not find matching sourceRange for structLog: ${msgParams.join(', ')}`
           )
           break
         }

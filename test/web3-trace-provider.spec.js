@@ -2,7 +2,8 @@ import Web3TraceProvider from '../src/web3-trace-provider'
 import MockProvider from './mock-provider'
 import {
   callPayload,
-  createContractPayload, educationPassRevertResult,
+  createContractPayload,
+  educationPassRevertResult,
   getCodeMock,
   gethRevertReceiptCreationResponse,
   gethRevertReceiptResponse,
@@ -104,7 +105,7 @@ describe('Web3TraceProvider', function() {
       stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
         cb(null, [{}, {}])
       })
-      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: '0x1234'}))
+      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: testContractJSON.contractsData[3].bytecode}))
       stub.callsFake((payload, cb) => cb(null, {}))
     })
     afterEach(() => {
@@ -158,11 +159,14 @@ describe('Web3TraceProvider', function() {
         stub.withArgs(matchMethod('eth_call'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, oldVerResponse)
         })
-        await prosmify(provider, callPayload)
+        try {
+          await prosmify(provider, callPayload)
+        } catch (e) {
+          assert.equal(e.message, 'Could not trace REVERT / invalid opcode. maybe legacy node.')
+        }
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
         assert.equal(1, stub.callCount)
         assert.equal(JSON.stringify(['eth_call']), JSON.stringify(spyCalledMethods))
-        assert.equal(true, spy.calledWith('Could not trace REVERT / invalid opcode. maybe legacy node.'))
       })
       it('when debug_traceTransaction retrun error.', async() => {
         stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
