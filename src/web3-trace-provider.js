@@ -225,13 +225,14 @@ export default class Web3TraceProvider {
       }
     }
     evmCallStack.unshift(startPointStack)
-    if (evmCallStack.length > 1) {
-      // if getRevertTrace returns a call stack it means there was a
-      // revert.
-      return this.getStackTrace(evmCallStack)
-    } else {
-      return this.getStackTraceSimple(address, txHash, result, isInvalid, evmCallStack)
+    if (evmCallStack.length === 1) {
+      // if length === 1, it did not get debug_traceTransaction, because it error happens in eth_call.
+      // so that, we create callStack from RPC response that is program counter of REVERT / invalid.
+      evmCallStack.push(this.createCallStackFromResponse(address, txHash, result, isInvalid))
     }
+    // if getRevertTrace returns a call stack it means there was a
+    // revert.
+    return this.getStackTrace(evmCallStack)
   }
 
   /**
@@ -242,7 +243,7 @@ export default class Web3TraceProvider {
    * @param isInvalid
    * @return {Promise<*>}
    */
-  async getStackTraceSimple(address, txHash, result, isInvalid, evmCallStack) {
+  createCallStackFromResponse(address, txHash, result, isInvalid) {
     let pc = -1
     if (result.error && result.error.data) {
       pc = result.error.data[txHash].program_counter
@@ -253,11 +254,10 @@ export default class Web3TraceProvider {
           type: `call ${isInvalid ? 'invalid' : 'revert'} point`
         }
       }
-      evmCallStack.push(errorStack)
+      return errorStack
     } else {
-      console.warn('not supported data formart.')
+      throw new Error('not supported data formart.')
     }
-    return this.getStackTrace(evmCallStack)
   }
 
   /**
