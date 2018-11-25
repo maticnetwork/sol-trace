@@ -4,8 +4,8 @@ import AbiFunctions from 'abi-decode-functions'
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
 import AssemblerInfoProvider from './assembler_info_provider'
+import ErrorResponseCapture from './error_response_capture'
 
-const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
     this.web3 = web3
@@ -26,15 +26,17 @@ export default class Web3TraceProvider {
   }
 
   sendAsync(payload, cb) {
-    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call' || payload.method === 'eth_getTransactionReceipt') {
+    const errorResCap = new ErrorResponseCapture(payload)
+    if (errorResCap.isTargetMethod()) {
       const txData = payload.params[0]
       return this.nextProvider.sendAsync(payload, (err, result) => {
-        if (this._isGanacheErrorResponse(result)) {
+        errorResCap.parseResponse(result)
+        if (errorResCap.isGanacheError) {
           const txHash = result.result || Object.keys(result.error.data)[0]
           if (utils.toBuffer(txHash).length === 32) {
             const toAddress = txData.to
             // record tx trace
-            this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload), this._isInvalidOpcode(result))
+            this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload), errorResCap.isInvaliding)
               .then(traceResult => {
                 result.error.message += traceResult
                 cb(err, result)
@@ -45,11 +47,11 @@ export default class Web3TraceProvider {
           } else {
             cb(new Error('Could not trace REVERT / invalid opcode. maybe legacy node.'), result)
           }
-        } else if (this._isGethEthCallRevertResponse(payload.method, result)) {
+        } else if (errorResCap.isGethError && errorResCap.isEthCallMethod()) {
           const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
           console.warn(`VM Exception while processing transaction: revert. reason: ${messageBuf.toString()}`)
           cb(err, result)
-        } else if (this._isGethErrorReceiptResponse(payload.method, result)) {
+        } else if (errorResCap.isGethError && errorResCap.isGetTransactionReceipt()) {
           // record tx trace
           const toAddress = result.result.to
           const txHash = result.result.transactionHash
@@ -68,46 +70,6 @@ export default class Web3TraceProvider {
     }
 
     return this.nextProvider.sendAsync(payload, cb)
-  }
-
-  /**
-   * Check the response result is ganache-core response and has revert error.
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isGanacheErrorResponse(result) {
-    return (result.error &&
-      result.error.message &&
-      (result.error.message.endsWith(': revert') || result.error.message.endsWith(': invalid opcode')))
-  }
-
-  /**
-   * Check is invalid opcode error.
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isInvalidOpcode(result) {
-    return result.error.message.endsWith(': invalid opcode')
-  }
-
-  /**
-   * Check the response result is go-ethereum response and has revert reason.
-   * @param  method Request JSON-RPC method
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isGethEthCallRevertResponse(method, result) {
-    return (method === 'eth_call' && result.result && result.result.startsWith(REVERT_MESSAGE_ID))
-  }
-
-  /**
-   * Check the response result is go-ethereum transaction receipt response and it mark error.
-   * @param  method Request JSON-RPC method
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isGethErrorReceiptResponse(method, result) {
-    return (method === 'eth_getTransactionReceipt' && result.result && result.result.status === '0x0')
   }
 
   /**
@@ -142,7 +104,9 @@ export default class Web3TraceProvider {
    */
   getContractCode(address) {
     return new Promise((resolve, reject) => {
-      if (this.contractCodes[address]) {
+      if (address === constants.NEW_CONTRACT) {
+        return reject(new Error('Contract Creation is not supporte.'))
+      } else if (this.contractCodes[address]) {
         return resolve(this.contractCodes[address])
       }
       this.nextProvider.sendAsync(

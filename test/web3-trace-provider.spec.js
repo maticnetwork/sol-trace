@@ -189,18 +189,20 @@ describe('Web3TraceProvider', function() {
         stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, creationRevertTraceJson)
         })
-        const spyGetStackTrace = sinon.spy(provider, 'getStackTrace')
+        const spyGetContractCode = sinon.spy(provider, 'getContractCode')
         try {
-          await prosmify(provider, createContractPayload)
+          try {
+            await prosmify(provider, createContractPayload)
+          } catch (e) {
+            assert.equal(e.message, 'Contract Creation is not supporte.')
+          }
           const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-          assert.equal(stub.callCount, 3)
-          assert.equal(spyGetStackTrace.getCall(0).args[0].length, 2)
-          assert.equal(spyGetStackTrace.getCall(0).args[0][0].address, 'NEW_CONTRACT')
-          assert.equal(spyGetStackTrace.getCall(0).args[0][1].address, 'NEW_CONTRACT')
-          assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode'])
+          assert.equal(stub.callCount, 2)
+          assert.equal(spyGetContractCode.getCall(0).args[0], 'NEW_CONTRACT')
+          assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction'])
             , JSON.stringify(spyCalledMethods))
         } finally {
-          spyGetStackTrace.restore()
+          spyGetContractCode.restore()
         }
       })
       it('invalid opcode.', async() => {
@@ -269,20 +271,22 @@ describe('Web3TraceProvider', function() {
         stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, creationRevertTraceJson)
         })
-        const spyGetStackTrace = sinon.spy(provider, 'getStackTrace')
+        const spyGetContractCode = sinon.spy(provider, 'getContractCode')
         try {
-          await prosmify(provider, getReceiptPayload)
+          try {
+            await prosmify(provider, getReceiptPayload)
+          } catch (e) {
+            assert.equal(e.message, 'Contract Creation is not supporte.')
+          }
           const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
-          const expect = spyGetStackTrace.getCall(0)
-          assert.equal(expect.args[0].length, 2)
-          assert.equal(expect.args[0][0].address, 'NEW_CONTRACT')
-          assert.equal(expect.args[0][1].address, 'NEW_CONTRACT')
-          assert.equal(stub.callCount, 3)
-          assert.equal(JSON.stringify(spyCalledMethods), JSON.stringify(['eth_getTransactionReceipt', 'debug_traceTransaction', 'eth_getCode']))
+          const expect = spyGetContractCode.getCall(0)
+          assert.equal(expect.args[0], 'NEW_CONTRACT')
+          assert.equal(stub.callCount, 2)
+          assert.equal(JSON.stringify(spyCalledMethods), JSON.stringify(['eth_getTransactionReceipt', 'debug_traceTransaction']))
           assert.equal(stub.getCall(1).args[0].params[0], '0x39b37a0f46525d1c233a461e97e3df398347c93e811a64e6aad150422eb9d0d5')
           assert.equal(stub.getCall(1).args[0].id, 22)
         } finally {
-          spyGetStackTrace.restore()
+          spyGetContractCode.restore()
         }
       })
     })
