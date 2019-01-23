@@ -30,6 +30,7 @@ const evmCallStacks = require('./resources/evm_callstack')
 const simpleRevertDebugTraceJSON = require('./resources/sumtoLengthCallStack')
 const educationPassDebugTraceJSON = require('./resources/education_debug_trace')
 const creationRevertTraceJson = require('./resources/creationRevertTraceResponse')
+const unknownSourceErrorJson = require('./resources/invalidOpcodeOnUnknownLine')
 
 const copy = (obj) => JSON.parse(JSON.stringify(obj))
 const prosmify = (provider, payload) => {
@@ -300,11 +301,6 @@ describe('Web3TraceProvider', function() {
     let stub
     beforeEach(() => {
       stub = sinon.stub(provider.nextProvider, 'sendAsync')
-      const datas = new AssemblerInfoProvider('test/resources/build2/**/*.json').contractsData
-      sinon.stub(provider.assemblerInfoProvider, 'contractsData').get(() => datas)
-      const passManagerBytecodes = datas.datas[1].runtimeBytecode
-      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: passManagerBytecodes}))
-      stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: educationPassDebugTraceJSON}))
       stub.callsFake((payload, cb) => cb(null, ''))
     })
     afterEach(() => {
@@ -312,7 +308,31 @@ describe('Web3TraceProvider', function() {
       sinon.restore()
     })
     it('success.', async() => {
+      const datas = new AssemblerInfoProvider('test/resources/build2/**/*.json').contractsData
+      sinon.stub(provider.assemblerInfoProvider, 'contractsData').get(() => datas)
+      const passManagerBytecodes = datas.datas[1].runtimeBytecode
+      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: passManagerBytecodes}))
+      stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: educationPassDebugTraceJSON}))
+
       const address = '0xf2beae25b23f0ccdd234410354cb42d08ed54981'
+      const txHash = '0x02ced131074d99fbd576b205f8d3cfb82c4852f2327d37abd39b2d702aa78557'
+      const functionId = '0x40c10f19'
+      const isInvalid = false
+
+      const trace = await provider.recordTxTrace(address, txHash, educationPassRevertResult, functionId, isInvalid)
+      expect(trace).to.have.string('Stack trace for REVERT:')
+      expect(trace).to.have.string('Ownable.sol:36:4')
+      expect(trace).to.have.string('EducationPass.sol:23')
+    })
+
+    it('invalid opcode on unknown source.', async() => {
+      const datas = new AssemblerInfoProvider('test/resources/build2/**/*.json').contractsData
+      sinon.stub(provider.assemblerInfoProvider, 'contractsData').get(() => datas)
+      const passManagerBytecodes = datas.datas[1].runtimeBytecode
+      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: passManagerBytecodes}))
+      stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: unknownSourceErrorJson.debugTranceErrorResponse}))
+
+      const address = unknownSourceErrorJson.ethCallPayload.params[0].to
       const txHash = '0x02ced131074d99fbd576b205f8d3cfb82c4852f2327d37abd39b2d702aa78557'
       const functionId = '0x40c10f19'
       const isInvalid = false

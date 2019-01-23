@@ -154,7 +154,7 @@ export default class Web3TraceProvider {
   }
 
   extractEvmCallStack(trace, address) {
-    const logs = (trace === undefined) ? [] : trace.structLogs
+    const logs = (trace === undefined || trace.structLogs === undefined) ? [] : trace.structLogs
     return getRevertTrace(logs, address)
   }
 

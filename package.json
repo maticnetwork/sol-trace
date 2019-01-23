@@ -10,6 +10,7 @@
     "clean": "rm -rf lib",
     "build": "npm run lint && npm run clean && babel src/ --out-dir build/",
     "lint": "eslint src/**/*.js test/**/*.spec.js",
+    "lint:fix": "eslint src/**/*.js test/**/*.spec.js --fix",
     "test": "mocha --require babel-core/register --require babel-polyfill --colors ./test/**/*.spec.js",
     "test:watch": "mocha --require babel-core/register --require babel-polyfill --colors -w ./test/**/*.spec.js",
     "debug": "mocha debug --require babel-core/register --require babel-polyfill --colors ./test/**/*.spec.js",
