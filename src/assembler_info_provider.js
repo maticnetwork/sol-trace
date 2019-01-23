@@ -39,7 +39,8 @@ export default class AssemblerInfoProvider {
         sources.push({
           artifactFileName,
           id: artifact.ast.id,
-          sourcePath: artifact.sourcePath
+          sourcePath: artifact.sourcePath,
+          source: artifact.source
         })
 
         if (!artifact.bytecode) {
@@ -62,7 +63,11 @@ export default class AssemblerInfoProvider {
       })
       sources = sources.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10))
       const sourceCodes = sources.map(source => {
-        return fs.readFileSync(source.sourcePath).toString()
+        if (!source.source) {
+          return fs.readFileSync(source.sourcePath).toString()
+        } else {
+          return source.source
+        }
       })
 
       this._contractsData = {
