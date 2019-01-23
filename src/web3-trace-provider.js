@@ -21,15 +21,15 @@ export default class Web3TraceProvider {
    * @param {Object} payload
    * @return {Object} result
    */
-  send(payload = {}) {
-    return this.nextProvider.send(payload)
+  send(payload, cb = () => {}) {
+    return this.nextProvider.send(payload, cb)
   }
 
   sendAsync(payload, cb) {
     const errorResCap = new ErrorResponseCapture(payload)
     if (errorResCap.isTargetMethod()) {
       const txData = payload.params[0]
-      return this.nextProvider.sendAsync(payload, (err, result) => {
+      return this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](payload, (err, result) => {
         errorResCap.parseResponse(result)
         if (errorResCap.isGanacheError) {
           const txHash = result.result || Object.keys(result.error.data)[0]
@@ -69,7 +69,7 @@ export default class Web3TraceProvider {
       })
     }
 
-    return this.nextProvider.sendAsync(payload, cb)
+    return this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](payload, cb)
   }
 
   /**
@@ -109,7 +109,7 @@ export default class Web3TraceProvider {
       } else if (this.contractCodes[address]) {
         return resolve(this.contractCodes[address])
       }
-      this.nextProvider.sendAsync(
+      this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](
         {
           id: new Date().getTime(),
           method: 'eth_getCode',
@@ -136,7 +136,7 @@ export default class Web3TraceProvider {
    */
   getTransactionTrace(nextId, txHash, traceParams = {}) {
     return new Promise((resolve, reject) => {
-      this.nextProvider.sendAsync(
+      this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](
         {
           id: nextId,
           method: 'debug_traceTransaction',

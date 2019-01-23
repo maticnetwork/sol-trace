@@ -1,5 +1,6 @@
 import Web3TraceProvider from '../src/web3-trace-provider'
 import MockProvider from './mock-provider'
+import Mock10Provider from './mock-10provider'
 import {
   callPayload,
   createContractPayload,
@@ -40,8 +41,8 @@ const prosmify = (provider, payload) => {
 }
 describe('Web3TraceProvider', function() {
   this.timeout(500)
-  const targetProvider = (mcb) => {
-    const mock = new MockProvider(mcb)
+  const targetProvider = (mcb, isWeb310 = false) => {
+    const mock = isWeb310 ? new Mock10Provider(mcb) : new MockProvider(mcb)
     const web3 = {
       currentProvider: mock,
       eth: {
@@ -129,9 +130,9 @@ describe('Web3TraceProvider', function() {
       })
       it('eth_sendTransaction result is REVERT', async() => {
         stub.withArgs(matchMethod('eth_sendTransaction'), sinon.match.func).callsFake((payload, cb) => {
-          cb(null, revertResponseForSendTransaction)
+          cb(null, copy(revertResponseForSendTransaction)) // あとで使うので。copyして渡す。
         })
-        sinon.stub(provider, 'extractEvmCallStack').returns(simpleRevertDebugTraceJSON)
+        sinon.stub(provider, 'extractEvmCallStack').returns(copy(simpleRevertDebugTraceJSON))
         await prosmify(provider, payload)
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
         assert.equal(3, spyCalledMethods.length)
@@ -257,7 +258,7 @@ describe('Web3TraceProvider', function() {
         stub.withArgs(matchMethod('eth_getTransactionReceipt'), sinon.match.func).callsFake((payload, cb) => {
           cb(null, gethRevertReceiptResponse)
         })
-        sinon.stub(provider, 'extractEvmCallStack').returns(simpleRevertDebugTraceJSON)
+        sinon.stub(provider, 'extractEvmCallStack').returns(copy(simpleRevertDebugTraceJSON))
         await prosmify(provider, getReceiptPayload)
         const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
         assert.equal(stub.callCount, 4)
@@ -367,6 +368,47 @@ describe('Web3TraceProvider', function() {
       expect(trace).to.have.string('Stack trace for REVERT:')
       expect(trace).to.have.string('Ownable.sol:36:4')
       expect(trace).to.have.string('EducationPass.sol:23')
+    })
+  })
+
+  describe('web3@1.0', () => {
+    let provider, spy, stub, contractDataStub
+    const matchMethod = (method) => {
+      return sinon.match(payload => payload.method === method)
+    }
+    beforeEach(() => {
+      provider = targetProvider(undefined, true)
+      spy = sinon.spy(console, 'warn')
+      stub = sinon.stub(provider.nextProvider, 'send')
+      contractDataStub = sinon.stub(provider.assemblerInfoProvider, 'getContractDataIfExists')
+      sinon.stub(provider.assemblerInfoProvider, 'contractsData').get(() => testContractJSON)
+      sinon.stub(provider.assemblerInfoProvider, 'sourceCodes').get(() => testContractJSON.sourceCodes)
+      sinon.stub(provider.assemblerInfoProvider, 'sources').get(() => testContractJSON.sources)
+
+      contractDataStub.returns(testContractJSON.contractsData[0])
+      stub.withArgs(matchMethod('debug_traceTransaction'), sinon.match.func).callsFake((payload, cb) => {
+        cb(null, [{}, {}])
+      })
+      stub.withArgs(matchMethod('eth_getCode'), sinon.match.func).callsFake((payload, cb) => cb(null, {result: testContractJSON.contractsData[3].bytecode}))
+      stub.callsFake((payload, cb) => cb(null, {}))
+    })
+    afterEach(() => {
+      stub.restore()
+      contractDataStub.restore()
+      spy.restore()
+      sinon.restore()
+    })
+    it('eth_sendTransaction result is REVERT', async() => {
+      stub.withArgs(matchMethod('eth_sendTransaction'), sinon.match.func).callsFake((payload, cb) => {
+        cb(null, copy(revertResponseForSendTransaction))
+      })
+      sinon.stub(provider, 'extractEvmCallStack').returns(copy(simpleRevertDebugTraceJSON))
+      await prosmify(provider, payload)
+      const spyCalledMethods = stub.getCalls().map(call => call.args[0].method)
+      assert.equal(3, spyCalledMethods.length)
+      assert.equal(JSON.stringify(['eth_sendTransaction', 'debug_traceTransaction', 'eth_getCode'])
+        , JSON.stringify(spyCalledMethods))
+      assert.equal('0x25e2028b4459864af2f7bfeccfa387ff2d9922b2da840687a9ae7233fa2c72ba', stub.getCall(1).args[0].params[0])
     })
   })
 })
