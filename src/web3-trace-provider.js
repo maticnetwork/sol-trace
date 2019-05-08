@@ -4,13 +4,14 @@ import AbiFunctions from 'abi-decode-functions'
 import {constants, getRevertTrace} from './trace'
 import {parseSourceMap} from './source-maps'
 import AssemblerInfoProvider from './assembler_info_provider'
+import ErrorResponseCapture from './error_response_capture'
 
-const REVERT_MESSAGE_ID = '0x08c379a0' // first 4byte of keccak256('Error(string)').
 export default class Web3TraceProvider {
   constructor(web3) {
     this.web3 = web3
     this.nextProvider = web3.currentProvider
     this.assemblerInfoProvider = new AssemblerInfoProvider()
+    this.contractCodes = {}
   }
 
   /**
@@ -20,20 +21,22 @@ export default class Web3TraceProvider {
    * @param {Object} payload
    * @return {Object} result
    */
-  send(payload = {}) {
-    return this.nextProvider.send(payload)
+  send(payload, cb = () => {}) {
+    return this.nextProvider.send(payload, cb)
   }
 
   sendAsync(payload, cb) {
-    if (payload.method === 'eth_sendTransaction' || payload.method === 'eth_call' || payload.method === 'eth_getTransactionReceipt') {
+    const errorResCap = new ErrorResponseCapture(payload)
+    if (errorResCap.isTargetMethod()) {
       const txData = payload.params[0]
-      return this.nextProvider.sendAsync(payload, (err, result) => {
-        if (this._isGanacheErrorResponse(result)) {
+      return this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](payload, (err, result) => {
+        errorResCap.parseResponse(result)
+        if (errorResCap.isGanacheError) {
           const txHash = result.result || Object.keys(result.error.data)[0]
           if (utils.toBuffer(txHash).length === 32) {
             const toAddress = txData.to
             // record tx trace
-            this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload), this._isInvalidOpcode(result))
+            this.recordTxTrace(toAddress, txHash, result, this.getFunctionId(payload), errorResCap.isInvaliding)
               .then(traceResult => {
                 result.error.message += traceResult
                 cb(err, result)
@@ -42,14 +45,13 @@ export default class Web3TraceProvider {
                 cb(traceError, result)
               })
           } else {
-            console.warn('Could not trace REVERT / invalid opcode. maybe legacy node.')
-            cb(err, result)
+            cb(new Error('Could not trace REVERT / invalid opcode. maybe legacy node.'), result)
           }
-        } else if (this._isGethEthCallRevertResponse(payload.method, result)) {
+        } else if (errorResCap.isGethError && errorResCap.isEthCallMethod()) {
           const messageBuf = this.pickUpRevertReason(utils.toBuffer(result.result))
           console.warn(`VM Exception while processing transaction: revert. reason: ${messageBuf.toString()}`)
           cb(err, result)
-        } else if (this._isGethErrorReceiptResponse(payload.method, result)) {
+        } else if (errorResCap.isGethError && errorResCap.isGetTransactionReceipt()) {
           // record tx trace
           const toAddress = result.result.to
           const txHash = result.result.transactionHash
@@ -67,47 +69,7 @@ export default class Web3TraceProvider {
       })
     }
 
-    return this.nextProvider.sendAsync(payload, cb)
-  }
-
-  /**
-   * Check the response result is ganache-core response and has revert error.
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isGanacheErrorResponse(result) {
-    return (result.error &&
-      result.error.message &&
-      (result.error.message.endsWith(': revert') || result.error.message.endsWith(': invalid opcode')))
-  }
-
-  /**
-   * Check is invalid opcode error.
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isInvalidOpcode(result) {
-    return result.error.message.endsWith(': invalid opcode')
-  }
-
-  /**
-   * Check the response result is go-ethereum response and has revert reason.
-   * @param  method Request JSON-RPC method
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isGethEthCallRevertResponse(method, result) {
-    return (method === 'eth_call' && result.result && result.result.startsWith(REVERT_MESSAGE_ID))
-  }
-
-  /**
-   * Check the response result is go-ethereum transaction receipt response and it mark error.
-   * @param  method Request JSON-RPC method
-   * @param  result Response data.
-   * @return boolean
-   */
-  _isGethErrorReceiptResponse(method, result) {
-    return (method === 'eth_getTransactionReceipt' && result.result && result.result.status === '0x0')
+    return this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](payload, cb)
   }
 
   /**
@@ -142,7 +104,12 @@ export default class Web3TraceProvider {
    */
   getContractCode(address) {
     return new Promise((resolve, reject) => {
-      this.nextProvider.sendAsync(
+      if (address === constants.NEW_CONTRACT) {
+        return reject(new Error('Contract Creation is not supporte.'))
+      } else if (this.contractCodes[address]) {
+        return resolve(this.contractCodes[address])
+      }
+      this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](
         {
           id: new Date().getTime(),
           method: 'eth_getCode',
@@ -152,7 +119,8 @@ export default class Web3TraceProvider {
           if (err) {
             reject(err)
           } else {
-            resolve(result.result)
+            this.contractCodes[address] = result.result
+            resolve(this.contractCodes[address])
           }
         }
       )
@@ -168,7 +136,7 @@ export default class Web3TraceProvider {
    */
   getTransactionTrace(nextId, txHash, traceParams = {}) {
     return new Promise((resolve, reject) => {
-      this.nextProvider.sendAsync(
+      this.nextProvider[this.nextProvider.sendAsync ? 'sendAsync' : 'send'](
         {
           id: nextId,
           method: 'debug_traceTransaction',
@@ -185,6 +153,20 @@ export default class Web3TraceProvider {
     })
   }
 
+  extractEvmCallStack(trace, address) {
+    const logs = (trace === undefined || trace.structLogs === undefined) ? [] : trace.structLogs
+    return getRevertTrace(logs, address)
+  }
+
+  /**
+   * recording trace that start point, call and revert opcode point from debug trace.
+   * @param address
+   * @param txHash
+   * @param result
+   * @param functionId
+   * @param isInvalid
+   * @return {Promise<*>}
+   */
   async recordTxTrace(address, txHash, result, functionId, isInvalid = false) {
     address = !address || address === '0x0'
       ? constants.NEW_CONTRACT
@@ -195,8 +177,7 @@ export default class Web3TraceProvider {
       disableStorage: true
     })
 
-    const logs = (trace === undefined) ? [] : trace.structLogs
-    const evmCallStack = getRevertTrace(logs, address)
+    const evmCallStack = this.extractEvmCallStack(trace, address)
     const opcodes = await this.getContractCode(address)
     const decoder = new AbiFunctions(opcodes)
     // create function call point stack
@@ -208,69 +189,47 @@ export default class Web3TraceProvider {
       }
     }
     evmCallStack.unshift(startPointStack)
-    if (evmCallStack.length > 1) {
-      // if getRevertTrace returns a call stack it means there was a
-      // revert.
-      return this.getStackTrace(evmCallStack)
-    } else {
-      return this.getStackTranceSimple(address, txHash, result, isInvalid)
+    if (evmCallStack.length === 1) {
+      // if length === 1, it did not get debug_traceTransaction, because it error happens in eth_call.
+      // so that, we create callStack from RPC response that is program counter of REVERT / invalid.
+      evmCallStack.push(this.createCallStackFromResponse(address, txHash, result, isInvalid))
     }
+    // if getRevertTrace returns a call stack it means there was a
+    // revert.
+    return this.getStackTrace(evmCallStack)
   }
 
-  async getStackTranceSimple(address, txHash, result, isInvalid = false) {
-    const bytecode = await this.getContractCode(address)
-    const contractData = this.assemblerInfoProvider.getContractDataIfExists(bytecode)
-
-    if (!contractData) {
-      console.warn(`unknown contract address: ${address}.`)
-      console.warn('Maybe you try to \'rm build/contracts/* && truffle compile\' for reset sourceMap.')
-      return null
-    }
-
-    const bytecodeHex = utils.stripHexPrefix(bytecode)
-    const sourceMap = contractData.sourceMapRuntime
-    const pcToSourceRange = parseSourceMap(
-      this.assemblerInfoProvider.sourceCodes,
-      sourceMap,
-      bytecodeHex,
-      this.assemblerInfoProvider.sources
-    )
-
-    let sourceRange
+  /**
+   * trace info convert to stack trace info that is using assembly opcodes.
+   * @param address
+   * @param txHash
+   * @param result
+   * @param isInvalid
+   * @return {Promise<*>}
+   */
+  createCallStackFromResponse(address, txHash, result, isInvalid) {
     let pc = -1
     if (result.error && result.error.data) {
       pc = result.error.data[txHash].program_counter
-    } else {
-      const dataObj = {'message': `not supported data formart.`}
-      result.error = result.error ? result.error : {}
-      result.error.data = dataObj
-    }
-    // Sometimes there is not a mapping for this pc (e.g. if the revert
-    // actually happens in assembly).
-    while (!sourceRange) {
-      sourceRange = pcToSourceRange[pc]
-      pc -= 1
-      if (pc < 0) {
-        console.warn(
-          `could not find matching sourceRange for structLog: ${JSON.stringify(result.error.data)}`
-        )
-        return null
+      const errorStack = {
+        address: address,
+        structLog: {
+          pc: pc,
+          type: `call ${isInvalid ? 'invalid' : 'revert'} point`
+        }
       }
+      return errorStack
+    } else {
+      throw new Error('not supported data formart.')
     }
-
-    const errorType = isInvalid ? 'invalid opcode' : 'REVERT'
-    if (sourceRange) {
-      const traceArray = [
-        sourceRange.fileName,
-        sourceRange.location.start.line,
-        sourceRange.location.start.column
-      ].join(':')
-      return `\n\nStack trace for ${errorType}:\n${traceArray}\n`
-    }
-
-    return `\n\nCould not determine stack trace for ${errorType}\n`
   }
 
+  /**
+   * trace info convert to stack trace info that is using call stack.
+   * @param evmCallStack
+   * @param functionId
+   * @return {Promise<string>}
+   */
   async getStackTrace(evmCallStack, functionId) {
     const sourceRanges = []
 
@@ -315,8 +274,9 @@ export default class Web3TraceProvider {
         sourceRange = pcToSourceRange[pc]
         pc -= 1
         if (pc <= 0) {
+          const msgParams = ['pc', 'op', 'type'].map((key) => `${key}: ${evmCallStackEntry.structLog[key]}`)
           console.warn(
-            `could not find matching sourceRange for structLog: ${evmCallStackEntry.structLog}`
+            `could not find matching sourceRange for structLog: ${msgParams.join(', ')}`
           )
           break
         }
